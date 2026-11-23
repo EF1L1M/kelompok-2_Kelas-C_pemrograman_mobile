@@ -11,6 +11,42 @@
 // 9. NOTIFICATIONS       -> notifications/{notifId}
 // ============================================================================
 
+DateTime _parseDateTime(dynamic value) {
+  if (value == null) return DateTime.now();
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+  try {
+    // Mendukung Firestore Timestamp tanpa mengikat model ke package cloud_firestore
+    final dynamic converted = (value as dynamic).toDate();
+    if (converted is DateTime) return converted;
+  } catch (_) {}
+  return DateTime.now();
+}
+
+DateTime? _parseNullableDateTime(dynamic value) {
+  if (value == null) return null;
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value);
+  try {
+    final dynamic converted = (value as dynamic).toDate();
+    if (converted is DateTime) return converted;
+  } catch (_) {}
+  return null;
+}
+
+double _toDouble(dynamic value, {double fallback = 0.0}) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+int _toInt(dynamic value, {int fallback = 0}) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+
 enum GroupRole {
   admin,
   member;
@@ -85,6 +121,48 @@ enum NotifType {
       };
 }
 
+// Ringkasan ringan peserta yang ikut disimpan pada dokumen BILLS agar
+// perhitungan saldo & daftar "Perlu Perhatian" real-time tanpa N+1 query.
+class BillParticipantSummary {
+  final String debtorUid;
+  final double totalDueIdr;
+  final PaymentStatus paymentStatus;
+
+  const BillParticipantSummary({
+    required this.debtorUid,
+    required this.totalDueIdr,
+    required this.paymentStatus,
+  });
+
+  BillParticipantSummary copyWith({
+    double? totalDueIdr,
+    PaymentStatus? paymentStatus,
+  }) =>
+      BillParticipantSummary(
+        debtorUid: debtorUid,
+        totalDueIdr: totalDueIdr ?? this.totalDueIdr,
+        paymentStatus: paymentStatus ?? this.paymentStatus,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'debtor_uid': debtorUid,
+        'total_due_idr': totalDueIdr,
+        'payment_status': paymentStatus.name,
+      };
+
+  factory BillParticipantSummary.fromMap(
+    String uid,
+    Map<String, dynamic> map,
+  ) =>
+      BillParticipantSummary(
+        debtorUid: (map['debtor_uid'] as String?) ?? uid,
+        totalDueIdr: _toDouble(map['total_due_idr']),
+        paymentStatus: PaymentStatus.fromString(
+          (map['payment_status'] as String?) ?? 'unpaid',
+        ),
+      );
+}
+
 // 1. Entitas USERS (users/{uid})
 class AppUser {
   final String uid;
@@ -102,7 +180,7 @@ class AppUser {
   });
 
   String get initials {
-    final parts = fullName.trim().split(' ');
+    final parts = fullName.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty || parts.first.isEmpty) return 'U';
     if (parts.length == 1) return parts.first[0].toUpperCase();
     return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
@@ -116,13 +194,12 @@ class AppUser {
         'created_at': createdAt.toIso8601String(),
       };
 
-  factory AppUser.fromMap(Map<String, dynamic> map) => AppUser(
-        uid: map['uid'] as String,
-        fullName: map['full_name'] as String,
-        email: map['email'] as String,
+  factory AppUser.fromMap(Map<String, dynamic> map, {String? docId}) => AppUser(
+        uid: (map['uid'] as String?) ?? docId ?? '',
+        fullName: (map['full_name'] as String?) ?? 'Pengguna',
+        email: (map['email'] as String?) ?? '',
         photoUrl: (map['photo_url'] as String?) ?? '',
-        createdAt: DateTime.tryParse((map['created_at'] as String?) ?? '') ??
-            DateTime.now(),
+        createdAt: _parseDateTime(map['created_at']),
       );
 }
 
@@ -131,7 +208,7 @@ class UserDevice {
   final String deviceId;
   final String userUid;
   final String fcmToken;
-  final String platform; // android | ios
+  final String platform; // android | ios | web
   final DateTime updatedAt;
 
   const UserDevice({
@@ -149,6 +226,15 @@ class UserDevice {
         'platform': platform,
         'updated_at': updatedAt.toIso8601String(),
       };
+
+  factory UserDevice.fromMap(Map<String, dynamic> map, {String? docId}) =>
+      UserDevice(
+        deviceId: (map['device_id'] as String?) ?? docId ?? '',
+        userUid: (map['user_uid'] as String?) ?? '',
+        fcmToken: (map['fcm_token'] as String?) ?? '',
+        platform: (map['platform'] as String?) ?? 'android',
+        updatedAt: _parseDateTime(map['updated_at']),
+      );
 }
 
 // 3. Entitas GROUPS (groups/{groupId})
@@ -158,6 +244,7 @@ class GroupModel {
   final String description;
   final String inviteCode; // UK (Unique Key)
   final String adminUid;
+  final List<String> memberUids;
   final DateTime createdAt;
 
   const GroupModel({
@@ -166,6 +253,7 @@ class GroupModel {
     this.description = '',
     required this.inviteCode,
     required this.adminUid,
+    this.memberUids = const [],
     required this.createdAt,
   });
 
@@ -173,6 +261,7 @@ class GroupModel {
     String? groupName,
     String? description,
     String? inviteCode,
+    List<String>? memberUids,
   }) =>
       GroupModel(
         groupId: groupId,
@@ -180,6 +269,7 @@ class GroupModel {
         description: description ?? this.description,
         inviteCode: inviteCode ?? this.inviteCode,
         adminUid: adminUid,
+        memberUids: memberUids ?? this.memberUids,
         createdAt: createdAt,
       );
 
@@ -189,8 +279,25 @@ class GroupModel {
         'description': description,
         'invite_code': inviteCode,
         'admin_uid': adminUid,
+        'member_uids': memberUids,
         'created_at': createdAt.toIso8601String(),
       };
+
+  factory GroupModel.fromMap(Map<String, dynamic> map, {String? docId}) {
+    final rawMembers = map['member_uids'];
+    final memberList = rawMembers is List
+        ? rawMembers.map((e) => e.toString()).toList()
+        : <String>[];
+    return GroupModel(
+      groupId: (map['group_id'] as String?) ?? docId ?? '',
+      groupName: (map['group_name'] as String?) ?? 'Grup Patungan',
+      description: (map['description'] as String?) ?? '',
+      inviteCode: (map['invite_code'] as String?) ?? '',
+      adminUid: (map['admin_uid'] as String?) ?? '',
+      memberUids: memberList,
+      createdAt: _parseDateTime(map['created_at']),
+    );
+  }
 }
 
 // 4. Entitas GROUP_MEMBERS (groups/{groupId}/members/{uid})
@@ -216,6 +323,15 @@ class GroupMember {
         'role': role.name,
         'joined_at': joinedAt.toIso8601String(),
       };
+
+  factory GroupMember.fromMap(Map<String, dynamic> map, {String? docId}) =>
+      GroupMember(
+        memberId: (map['member_id'] as String?) ?? docId ?? '',
+        groupId: (map['group_id'] as String?) ?? '',
+        userUid: (map['user_uid'] as String?) ?? docId ?? '',
+        role: GroupRole.fromString((map['role'] as String?) ?? 'member'),
+        joinedAt: _parseDateTime(map['joined_at']),
+      );
 }
 
 // 5. Entitas BILLS (groups/{groupId}/bills/{billId})
@@ -234,6 +350,7 @@ class BillModel {
   final double grandTotalIdr;
   final String receiptUrl;
   final BillStatus status; // open | settled (BR-06)
+  final Map<String, BillParticipantSummary> participantSummaries;
   final DateTime createdAt;
 
   const BillModel({
@@ -251,6 +368,7 @@ class BillModel {
     required this.grandTotalIdr,
     this.receiptUrl = '',
     required this.status,
+    this.participantSummaries = const {},
     required this.createdAt,
   });
 
@@ -266,6 +384,7 @@ class BillModel {
     double? grandTotalIdr,
     String? receiptUrl,
     BillStatus? status,
+    Map<String, BillParticipantSummary>? participantSummaries,
   }) =>
       BillModel(
         billId: billId,
@@ -282,8 +401,65 @@ class BillModel {
         grandTotalIdr: grandTotalIdr ?? this.grandTotalIdr,
         receiptUrl: receiptUrl ?? this.receiptUrl,
         status: status ?? this.status,
+        participantSummaries: participantSummaries ?? this.participantSummaries,
         createdAt: createdAt,
       );
+
+  Map<String, dynamic> toMap() => {
+        'bill_id': billId,
+        'group_id': groupId,
+        'creator_uid': creatorUid,
+        'title': title,
+        'currency_code': currencyCode,
+        'exchange_rate': exchangeRate,
+        'rate_date': rateDate.toIso8601String(),
+        'subtotal_idr': subtotalIdr,
+        'tax_amount_idr': taxAmountIdr,
+        'service_amount_idr': serviceAmountIdr,
+        'discount_amount_idr': discountAmountIdr,
+        'grand_total_idr': grandTotalIdr,
+        'receipt_url': receiptUrl,
+        'status': status.name,
+        'participant_summaries': participantSummaries.map(
+          (k, v) => MapEntry(k, v.toMap()),
+        ),
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory BillModel.fromMap(Map<String, dynamic> map, {String? docId}) {
+    final Map<String, BillParticipantSummary> summaries = {};
+    final rawSummaries = map['participant_summaries'];
+    if (rawSummaries is Map) {
+      for (final entry in rawSummaries.entries) {
+        if (entry.value is Map) {
+          final uid = entry.key.toString();
+          summaries[uid] = BillParticipantSummary.fromMap(
+            uid,
+            Map<String, dynamic>.from(entry.value as Map),
+          );
+        }
+      }
+    }
+
+    return BillModel(
+      billId: (map['bill_id'] as String?) ?? docId ?? '',
+      groupId: (map['group_id'] as String?) ?? '',
+      creatorUid: (map['creator_uid'] as String?) ?? '',
+      title: (map['title'] as String?) ?? 'Tagihan Patungan',
+      currencyCode: (map['currency_code'] as String?) ?? 'IDR',
+      exchangeRate: _toDouble(map['exchange_rate'], fallback: 1.0),
+      rateDate: _parseDateTime(map['rate_date']),
+      subtotalIdr: _toDouble(map['subtotal_idr']),
+      taxAmountIdr: _toDouble(map['tax_amount_idr']),
+      serviceAmountIdr: _toDouble(map['service_amount_idr']),
+      discountAmountIdr: _toDouble(map['discount_amount_idr']),
+      grandTotalIdr: _toDouble(map['grand_total_idr']),
+      receiptUrl: (map['receipt_url'] as String?) ?? '',
+      status: BillStatus.fromString((map['status'] as String?) ?? 'open'),
+      participantSummaries: summaries,
+      createdAt: _parseDateTime(map['created_at']),
+    );
+  }
 }
 
 // 6. Entitas BILL_ITEMS (.../bills/{billId}/items/{itemId})
@@ -303,6 +479,25 @@ class BillItemModel {
     required this.unitPrice,
     required this.priceIdr,
   });
+
+  Map<String, dynamic> toMap() => {
+        'item_id': itemId,
+        'bill_id': billId,
+        'item_name': itemName,
+        'qty': qty,
+        'unit_price': unitPrice,
+        'price_idr': priceIdr,
+      };
+
+  factory BillItemModel.fromMap(Map<String, dynamic> map, {String? docId}) =>
+      BillItemModel(
+        itemId: (map['item_id'] as String?) ?? docId ?? '',
+        billId: (map['bill_id'] as String?) ?? '',
+        itemName: (map['item_name'] as String?) ?? 'Item',
+        qty: _toInt(map['qty'], fallback: 1),
+        unitPrice: _toDouble(map['unit_price']),
+        priceIdr: _toDouble(map['price_idr']),
+      );
 }
 
 // 7. Entitas ITEM_ASSIGNMENTS (.../items/{itemId}/assignments/{debtorUid})
@@ -318,6 +513,24 @@ class ItemAssignmentModel {
     required this.debtorUid,
     required this.shareIdr,
   });
+
+  Map<String, dynamic> toMap() => {
+        'assignment_id': assignmentId,
+        'item_id': itemId,
+        'debtor_uid': debtorUid,
+        'share_idr': shareIdr,
+      };
+
+  factory ItemAssignmentModel.fromMap(
+    Map<String, dynamic> map, {
+    String? docId,
+  }) =>
+      ItemAssignmentModel(
+        assignmentId: (map['assignment_id'] as String?) ?? docId ?? '',
+        itemId: (map['item_id'] as String?) ?? '',
+        debtorUid: (map['debtor_uid'] as String?) ?? docId ?? '',
+        shareIdr: _toDouble(map['share_idr']),
+      );
 }
 
 // 8. Entitas BILL_PARTICIPANTS (.../bills/{billId}/participants/{debtorUid})
@@ -371,6 +584,40 @@ class BillParticipantModel {
         claimedAt: claimedAt ?? this.claimedAt,
         verifiedAt: verifiedAt ?? this.verifiedAt,
       );
+
+  Map<String, dynamic> toMap() => {
+        'participant_id': participantId,
+        'bill_id': billId,
+        'debtor_uid': debtorUid,
+        'items_subtotal_idr': itemsSubtotalIdr,
+        'tax_share_idr': taxShareIdr,
+        'service_share_idr': serviceShareIdr,
+        'discount_share_idr': discountShareIdr,
+        'total_due_idr': totalDueIdr,
+        'payment_status': paymentStatus.name,
+        'claimed_at': claimedAt?.toIso8601String(),
+        'verified_at': verifiedAt?.toIso8601String(),
+      };
+
+  factory BillParticipantModel.fromMap(
+    Map<String, dynamic> map, {
+    String? docId,
+  }) =>
+      BillParticipantModel(
+        participantId: (map['participant_id'] as String?) ?? docId ?? '',
+        billId: (map['bill_id'] as String?) ?? '',
+        debtorUid: (map['debtor_uid'] as String?) ?? docId ?? '',
+        itemsSubtotalIdr: _toDouble(map['items_subtotal_idr']),
+        taxShareIdr: _toDouble(map['tax_share_idr']),
+        serviceShareIdr: _toDouble(map['service_share_idr']),
+        discountShareIdr: _toDouble(map['discount_share_idr']),
+        totalDueIdr: _toDouble(map['total_due_idr']),
+        paymentStatus: PaymentStatus.fromString(
+          (map['payment_status'] as String?) ?? 'unpaid',
+        ),
+        claimedAt: _parseNullableDateTime(map['claimed_at']),
+        verifiedAt: _parseNullableDateTime(map['verified_at']),
+      );
 }
 
 // 9. Entitas NOTIFICATIONS (notifications/{notifId})
@@ -407,5 +654,33 @@ class AppNotification {
         message: message,
         isRead: isRead ?? this.isRead,
         createdAt: createdAt,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'notif_id': notifId,
+        'receiver_uid': receiverUid,
+        'sender_uid': senderUid,
+        'bill_id': billId,
+        'group_id': groupId,
+        'type': type.code,
+        'message': message,
+        'is_read': isRead,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  factory AppNotification.fromMap(
+    Map<String, dynamic> map, {
+    String? docId,
+  }) =>
+      AppNotification(
+        notifId: (map['notif_id'] as String?) ?? docId ?? '',
+        receiverUid: (map['receiver_uid'] as String?) ?? '',
+        senderUid: (map['sender_uid'] as String?) ?? '',
+        billId: (map['bill_id'] as String?) ?? '',
+        groupId: (map['group_id'] as String?) ?? '',
+        type: NotifType.fromCode((map['type'] as String?) ?? 'new_bill'),
+        message: (map['message'] as String?) ?? '',
+        isRead: (map['is_read'] as bool?) ?? false,
+        createdAt: _parseDateTime(map['created_at']),
       );
 }

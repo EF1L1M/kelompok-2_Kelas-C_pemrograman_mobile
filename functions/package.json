@@ -1,6 +1,6 @@
 {
   "name": "smart-split-bill-functions",
-  "description": "Cloud Functions for Smart Split-Bill & Budget FCM Triggers",
+  "description": "Cloud Functions for Patungin FCM Triggers",
   "scripts": {
     "serve": "firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions"

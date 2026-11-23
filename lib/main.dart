@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'core/firebase/firebase_config.dart';
 import 'core/router/app_router.dart';
 import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
@@ -14,23 +15,35 @@ import 'repositories/group_repository.dart';
 import 'repositories/open_source_api_repository.dart';
 
 // ============================================================================
-// ENTRY POINT APLIKASI SMART SPLIT-BILL & BUDGET
+// ENTRY POINT APLIKASI PATUNGIN (SMART SPLIT-BILL & BUDGET)
 // Mata Kuliah: Pemrograman Mobile (Dart & Flutter SDK)
-// Mengintegrasikan BLoC/Cubit State Management, GoRouter Auth Guard,
-// Open-Source API (Frankfurter v2 & OCR Isolate), serta Push Notifications.
+// Mengintegrasikan Firebase Auth & Cloud Firestore (Local Emulator Suite / Cloud),
+// BLoC/Cubit State Management, GoRouter Auth Guard, Open-Source API, dan Notifikasi.
 // ============================================================================
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Inisialisasi Push Notifications (Foreground, Background, Terminated)
+  // 1. Inisialisasi Firebase & sambungkan ke Local Emulator Suite (tahap awal)
+  await FirebaseAppConfig.initialize();
+
+  // 2. Inisialisasi Push Notifications (Foreground, Background, Terminated)
   await NotificationService.instance.initialize();
 
-  runApp(const SmartSplitBillApp());
+  // 3. Muat preferensi onboarding lokal sebelum merender aplikasi
+  final authRepository = AuthRepository();
+  await authRepository.loadPreferences();
+
+  runApp(SmartSplitBillApp(authRepository: authRepository));
 }
 
 class SmartSplitBillApp extends StatefulWidget {
-  const SmartSplitBillApp({super.key});
+  final AuthRepository authRepository;
+
+  const SmartSplitBillApp({
+    super.key,
+    required this.authRepository,
+  });
 
   @override
   State<SmartSplitBillApp> createState() => _SmartSplitBillAppState();
@@ -55,7 +68,7 @@ class _SmartSplitBillAppState extends State<SmartSplitBillApp> {
   @override
   void initState() {
     super.initState();
-    _authRepository = AuthRepository();
+    _authRepository = widget.authRepository;
     _groupRepository = GroupRepository();
     _apiRepository = OpenSourceApiRepository();
     _settlementRepository = BillSettlementRepository();
@@ -66,7 +79,7 @@ class _SmartSplitBillAppState extends State<SmartSplitBillApp> {
       settlementRepository: _settlementRepository,
     );
 
-    // Sinkronkan GroupCubit saat pengguna login/berganti akun
+    // Sinkronkan GroupCubit saat pengguna login/keluar
     final initialUser = _authRepository.currentUser;
     _groupCubit.bindUser(initialUser?.uid);
     _authStateSub = _authCubit.stream.listen((state) {
@@ -88,7 +101,7 @@ class _SmartSplitBillAppState extends State<SmartSplitBillApp> {
       },
     );
 
-    // Tampilkan banner Push Notification interaktif saat event FCM/lokal terpancar
+    // Tampilkan banner Push Notification interaktif saat event lokal terpancar
     _pushBannerSub = NotificationService.instance.onPushBanner.listen(
       (event) {
         final messenger = _scaffoldMessengerKey.currentState;
@@ -160,7 +173,7 @@ class _SmartSplitBillAppState extends State<SmartSplitBillApp> {
           BlocProvider.value(value: _groupCubit),
         ],
         child: MaterialApp.router(
-          title: 'Smart Split-Bill & Budget',
+          title: 'Patungin',
           debugShowCheckedModeBanner: false,
           scaffoldMessengerKey: _scaffoldMessengerKey,
           theme: AppTheme.lightTheme,

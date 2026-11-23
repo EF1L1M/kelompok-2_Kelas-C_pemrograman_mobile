@@ -1,7 +1,7 @@
 // ============================================================================
 // ADVANCE DART: CUSTOM EXCEPTION
-// Penanggung Jawab: Anggota 1 (Bab 2.9 & UFD-1)
-// Menangani error autentikasi dan otorisasi dengan pesan Bahasa Indonesia (NFR-04).
+// Menangani error Firebase Auth, Cloud Firestore, dan otorisasi RBAC
+// dengan pesan Bahasa Indonesia yang ramah pengguna (NFR-04).
 // ============================================================================
 
 class AppAuthException implements Exception {
@@ -35,6 +35,23 @@ class AppAuthException implements Exception {
           code: 'invalid-email',
           message: 'Format alamat email tidak valid.',
         ),
+      'user-disabled' => const AppAuthException(
+          code: 'user-disabled',
+          message: 'Akun ini telah dinonaktifkan. Hubungi administrator.',
+        ),
+      'too-many-requests' => const AppAuthException(
+          code: 'too-many-requests',
+          message: 'Terlalu banyak percobaan. Silakan tunggu beberapa saat lalu coba lagi.',
+        ),
+      'network-request-failed' || 'unavailable' => const AppAuthException(
+          code: 'network-request-failed',
+          message:
+              'Tidak dapat terhubung ke server Firebase. Pastikan Firebase Emulator sedang berjalan atau periksa koneksi internet Anda.',
+        ),
+      'operation-not-allowed' => const AppAuthException(
+          code: 'operation-not-allowed',
+          message: 'Metode autentikasi ini belum diaktifkan pada konfigurasi Firebase.',
+        ),
       'permission-denied' || 'unauthorized-group' => const AppAuthException(
           code: 'permission-denied',
           message:
@@ -42,7 +59,7 @@ class AppAuthException implements Exception {
         ),
       _ => AppAuthException(
           code: code,
-          message: 'Terjadi kesalahan autentikasi ($code). Silakan coba lagi.',
+          message: 'Terjadi kesalahan ($code). Silakan coba lagi.',
         ),
     };
   }

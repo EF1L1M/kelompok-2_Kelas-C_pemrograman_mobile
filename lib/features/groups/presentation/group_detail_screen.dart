@@ -35,136 +35,170 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     final groupRepo = context.read<GroupRepository>();
     final settlementRepo = context.read<BillSettlementRepository>();
 
-    late final GroupModel group;
-    try {
-      group = groupRepo.getGroupGuarded(
-        groupId: widget.groupId,
-        requesterUid: currentUser.uid,
-      );
-    } on AppAuthException catch (e) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Akses Grup Ditolak')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.lock_person_rounded,
-                  size: 64,
-                  color: AppTheme.statusRejected,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  e.message,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => context.go('/home'),
-                  child: const Text('Kembali ke Beranda'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    final GroupRole? myRole =
-        groupRepo.getUserRoleInGroup(widget.groupId, currentUser.uid);
-    final bool isAdmin = myRole == GroupRole.admin;
-    final members = groupRepo.getGroupMembersWithProfiles(
-      groupId: widget.groupId,
-      requesterUid: currentUser.uid,
-    );
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(group.groupName),
-        actions: [
-          IconButton(
-            tooltip: 'Anggota & Kode Undangan',
-            onPressed: () => _showMembersBottomSheet(
-              context,
-              group: group,
-              members: members,
-              isAdmin: isAdmin,
-              currentUid: currentUser.uid,
-            ),
-            icon: const Icon(Icons.people_alt_outlined),
-          ),
-          if (isAdmin)
-            PopupMenuButton<String>(
-              tooltip: 'Pengaturan Grup',
-              onSelected: (value) {
-                if (value == 'edit') {
-                  _showEditGroupDialog(context, group, currentUser.uid);
-                } else if (value == 'delete') {
-                  _showDeleteGroupConfirmation(context, group, currentUser.uid);
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: ListTile(
-                    leading: Icon(Icons.edit_outlined),
-                    title: Text('Ubah Informasi Grup'),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                  ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    leading: Icon(
-                      Icons.delete_forever_rounded,
+    return StreamBuilder<GroupModel?>(
+      stream: groupRepo.watchGroup(widget.groupId),
+      builder: (context, groupSnap) {
+        if (groupSnap.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Akses Grup Ditolak')),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.lock_person_rounded,
+                      size: 64,
                       color: AppTheme.statusRejected,
                     ),
-                    title: Text(
-                      'Hapus Grup',
-                      style: TextStyle(color: AppTheme.statusRejected),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Anda tidak memiliki akses ke grup ini atau terjadi kesalahan (${groupSnap.error}).',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                  ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => context.go('/home'),
+                      child: const Text('Kembali ke Beranda'),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () =>
-            context.push('/groups/${widget.groupId}/create-bill'),
-        backgroundColor: AppTheme.primaryEmerald,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add_card_rounded),
-        label: const Text(
-          'Buat Tagihan Baru',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
-      body: StreamBuilder<List<BillModel>>(
-        stream: settlementRepo.watchGroupBills(widget.groupId),
-        builder: (context, snapshot) {
-          final allBills = snapshot.data ?? const [];
-          final filteredBills = allBills.where((b) {
-            if (_statusFilter == 'open') return b.status == BillStatus.open;
-            if (_statusFilter == 'settled') {
-              return b.status == BillStatus.settled;
-            }
-            return true;
-          }).toList();
-
-          final groupBalance = settlementRepo.calculateUserBalance(
-            currentUser.uid,
-            groupIdFilter: widget.groupId,
           );
+        }
+
+        if (groupSnap.connectionState == ConnectionState.waiting &&
+            !groupSnap.hasData) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final group = groupSnap.data;
+        if (group == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Grup Tidak Ditemukan')),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Grup tidak ditemukan atau telah dihapus.'),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => context.go('/home'),
+                    child: const Text('Kembali ke Beranda'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return StreamBuilder<List<GroupMemberProfile>>(
+          stream: groupRepo.watchGroupMembersWithProfiles(widget.groupId),
+          builder: (context, membersSnap) {
+            final members = membersSnap.data ?? const [];
+            final myProfile = members
+                .where((m) => m.user.uid == currentUser.uid)
+                .firstOrNull;
+            final bool isAdmin = myProfile?.membership.role == GroupRole.admin ||
+                group.adminUid == currentUser.uid;
+
+            return Scaffold(
+              appBar: AppBar(
+                title: Text(group.groupName),
+                actions: [
+                  IconButton(
+                    tooltip: 'Anggota & Kode Undangan',
+                    onPressed: () => _showMembersBottomSheet(
+                      context,
+                      group: group,
+                      members: members,
+                      isAdmin: isAdmin,
+                      currentUid: currentUser.uid,
+                    ),
+                    icon: const Icon(Icons.people_alt_outlined),
+                  ),
+                  if (isAdmin)
+                    PopupMenuButton<String>(
+                      tooltip: 'Pengaturan Grup',
+                      onSelected: (value) {
+                        if (value == 'edit') {
+                          _showEditGroupDialog(context, group, currentUser.uid);
+                        } else if (value == 'delete') {
+                          _showDeleteGroupConfirmation(
+                            context,
+                            group,
+                            currentUser.uid,
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: ListTile(
+                            leading: Icon(Icons.edit_outlined),
+                            title: Text('Ubah Informasi Grup'),
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: ListTile(
+                            leading: Icon(
+                              Icons.delete_forever_rounded,
+                              color: AppTheme.statusRejected,
+                            ),
+                            title: Text(
+                              'Hapus Grup',
+                              style: TextStyle(color: AppTheme.statusRejected),
+                            ),
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              floatingActionButton: FloatingActionButton.extended(
+                onPressed: () =>
+                    context.push('/groups/${widget.groupId}/create-bill'),
+                backgroundColor: AppTheme.primaryEmerald,
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.add_card_rounded),
+                label: const Text(
+                  'Buat Tagihan Baru',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              body: StreamBuilder<List<BillModel>>(
+                stream: settlementRepo.watchGroupBills(widget.groupId),
+                builder: (context, snapshot) {
+                  final allBills = snapshot.data ?? const [];
+                  final filteredBills = allBills.where((b) {
+                    if (_statusFilter == 'open') {
+                      return b.status == BillStatus.open;
+                    }
+                    if (_statusFilter == 'settled') {
+                      return b.status == BillStatus.settled;
+                    }
+                    return true;
+                  }).toList();
+
+                  final groupBalance =
+                      settlementRepo.calculateUserBalanceFromBills(
+                    userUid: currentUser.uid,
+                    bills: allBills,
+                    groupIdFilter: widget.groupId,
+                  );
           final totalGroupSpendingIdr = allBills.fold<double>(
             0.0,
             (sum, b) => sum + b.grandTotalIdr,
@@ -534,6 +568,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         },
       ),
     );
+          },
+        );
+      },
+    );
   }
 
   void _showMembersBottomSheet(
@@ -544,7 +582,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     required String currentUid,
   }) {
     final groupRepo = context.read<GroupRepository>();
-    final nonMembers = groupRepo.getNonMembersForGroup(group.groupId);
+    final emailCtrl = TextEditingController();
 
     showModalBottomSheet<void>(
       context: context,
@@ -553,123 +591,163 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Anggota Grup (${members.length})',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: group.inviteCode));
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Kode undangan ${group.inviteCode} berhasil disalin!',
-                        ),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.copy_rounded, size: 16),
-                  label: Text('Salin Kode: ${group.inviteCode}'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ...members.map((m) {
-              final canKick = isAdmin && m.user.uid != currentUid;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor:
-                      AppTheme.primaryEmerald.withValues(alpha: 0.15),
-                  child: Text(
-                    m.user.initials,
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          20 + MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Anggota Grup (${members.length})',
                     style: const TextStyle(
-                      color: AppTheme.primaryEmerald,
+                      fontSize: 18,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-                title: Text(
-                  m.user.fullName,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text('${m.user.email} · ${m.membership.role.label}'),
-                trailing: canKick
-                    ? IconButton(
-                        tooltip: 'Keluarkan dari grup',
-                        icon: const Icon(
-                          Icons.person_remove_rounded,
-                          color: AppTheme.statusRejected,
+                  TextButton.icon(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: group.inviteCode));
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Kode undangan ${group.inviteCode} berhasil disalin!',
+                          ),
+                          behavior: SnackBarBehavior.floating,
                         ),
-                        onPressed: () async {
-                          Navigator.pop(ctx);
-                          await groupRepo.removeMemberFromGroup(
-                            groupId: group.groupId,
-                            requesterUid: currentUid,
-                            targetUserUid: m.user.uid,
-                          );
-                          if (mounted) setState(() {});
-                        },
-                      )
-                    : null,
-              );
-            }),
-            if (isAdmin && nonMembers.isNotEmpty) ...[
-              const Divider(height: 24),
-              const Text(
-                'Tambahkan Anggota Terdaftar:',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF475569),
-                ),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: Text('Salin Kode: ${group.inviteCode}'),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: nonMembers.map((user) {
-                  return ActionChip(
-                    avatar: const Icon(Icons.person_add_alt_1_rounded, size: 16),
-                    label: Text('Tambah ${user.fullName}'),
-                    onPressed: () async {
-                      Navigator.pop(ctx);
-                      await groupRepo.addMemberToGroup(
-                        groupId: group.groupId,
-                        requesterUid: currentUid,
-                        targetUserUid: user.uid,
-                      );
-                      if (mounted) {
-                        setState(() {});
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '${user.fullName} berhasil ditambahkan ke grup!',
-                            ),
-                            backgroundColor: AppTheme.primaryEmerald,
-                            behavior: SnackBarBehavior.floating,
+              ...members.map((m) {
+                final canKick = isAdmin && m.user.uid != currentUid;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor:
+                        AppTheme.primaryEmerald.withValues(alpha: 0.15),
+                    child: Text(
+                      m.user.initials,
+                      style: const TextStyle(
+                        color: AppTheme.primaryEmerald,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    m.user.fullName,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text('${m.user.email} · ${m.membership.role.label}'),
+                  trailing: canKick
+                      ? IconButton(
+                          tooltip: 'Keluarkan dari grup',
+                          icon: const Icon(
+                            Icons.person_remove_rounded,
+                            color: AppTheme.statusRejected,
                           ),
-                        );
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            try {
+                              await groupRepo.removeMemberFromGroup(
+                                groupId: group.groupId,
+                                requesterUid: currentUid,
+                                targetUserUid: m.user.uid,
+                              );
+                            } on AppAuthException catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(e.message),
+                                    backgroundColor: AppTheme.statusRejected,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        )
+                      : null,
+                );
+              }),
+              if (isAdmin) ...[
+                const Divider(height: 24),
+                const Text(
+                  'Tambah Anggota via Email Terdaftar:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF475569),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          hintText: 'email.teman@domain.com',
+                          isDense: true,
+                          prefixIcon: Icon(Icons.email_outlined, size: 18),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () async {
+                        final email = emailCtrl.text.trim();
+                        if (email.isEmpty) return;
+                        Navigator.pop(ctx);
+                        try {
+                          final addedUser = await groupRepo.addMemberByEmail(
+                            groupId: group.groupId,
+                            requesterUid: currentUid,
+                            email: email,
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '${addedUser.fullName} berhasil ditambahkan ke grup!',
+                                ),
+                                backgroundColor: AppTheme.primaryEmerald,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        } on AppAuthException catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(e.message),
+                                backgroundColor: AppTheme.statusRejected,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Tambah'),
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

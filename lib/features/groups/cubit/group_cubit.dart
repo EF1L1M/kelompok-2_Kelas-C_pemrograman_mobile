@@ -6,15 +6,18 @@ import '../../../repositories/bill_settlement_repository.dart';
 import '../../../repositories/group_repository.dart';
 
 // ============================================================================
-// GROUP CUBIT (STATE MANAGEMENT - ANGGOTA 1)
+// GROUP CUBIT (REAL-TIME FIRESTORE STATE MANAGEMENT)
 // Mengelola daftar grup pengguna, saldo utang/piutang lintas grup,
-// pembuatan grup (transaksi invite_code unik BR-07), gabung grup,
-// dan aksi otorisasi Group Admin (FR-02, Tabel 2.5, UFD-2).
+// daftar tagihan "Perlu Perhatian", pembuatan grup (invite_code unik BR-07),
+// serta gabung grup via kode undangan.
 // ============================================================================
 
 class GroupDashboardState {
   final List<GroupModel> groups;
+  final List<BillModel> allBills;
   final UserBalanceSummary overallBalance;
+  final Map<String, UserBalanceSummary> balanceByGroup;
+  final List<ActionableBillItem> actionableBills;
   final int unreadNotifCount;
   final bool isLoading;
   final String? feedbackMessage;
@@ -22,16 +25,26 @@ class GroupDashboardState {
 
   const GroupDashboardState({
     required this.groups,
+    this.allBills = const [],
     required this.overallBalance,
+    this.balanceByGroup = const {},
+    this.actionableBills = const [],
     required this.unreadNotifCount,
     this.isLoading = false,
     this.feedbackMessage,
     this.isErrorFeedback = false,
   });
 
+  UserBalanceSummary balanceForGroup(String groupId) =>
+      balanceByGroup[groupId] ??
+      const UserBalanceSummary(totalYouOweIdr: 0, totalOwedToYouIdr: 0);
+
   GroupDashboardState copyWith({
     List<GroupModel>? groups,
+    List<BillModel>? allBills,
     UserBalanceSummary? overallBalance,
+    Map<String, UserBalanceSummary>? balanceByGroup,
+    List<ActionableBillItem>? actionableBills,
     int? unreadNotifCount,
     bool? isLoading,
     String? feedbackMessage,
@@ -39,7 +52,10 @@ class GroupDashboardState {
   }) =>
       GroupDashboardState(
         groups: groups ?? this.groups,
+        allBills: allBills ?? this.allBills,
         overallBalance: overallBalance ?? this.overallBalance,
+        balanceByGroup: balanceByGroup ?? this.balanceByGroup,
+        actionableBills: actionableBills ?? this.actionableBills,
         unreadNotifCount: unreadNotifCount ?? this.unreadNotifCount,
         isLoading: isLoading ?? this.isLoading,
         feedbackMessage: feedbackMessage,
@@ -52,6 +68,7 @@ class GroupCubit extends Cubit<GroupDashboardState> {
   final BillSettlementRepository _settlementRepository;
 
   StreamSubscription<List<GroupModel>>? _groupsSub;
+  StreamSubscription<List<BillModel>>? _billsSub;
   StreamSubscription<List<AppNotification>>? _notifSub;
   String? _activeUserUid;
 
@@ -73,6 +90,7 @@ class GroupCubit extends Cubit<GroupDashboardState> {
 
   void bindUser(String? userUid) {
     _groupsSub?.cancel();
+    _billsSub?.cancel();
     _notifSub?.cancel();
     _activeUserUid = userUid;
 
@@ -91,12 +109,13 @@ class GroupCubit extends Cubit<GroupDashboardState> {
     }
 
     _groupsSub = _groupRepository.watchUserGroups(userUid).listen((groups) {
-      final balance = _settlementRepository.calculateUserBalance(userUid);
-      emit(
-        state.copyWith(
-          groups: groups,
-          overallBalance: balance,
-        ),
+      _recomputeAndEmit(userUid: userUid, groups: groups, bills: state.allBills);
+
+      _billsSub?.cancel();
+      _billsSub = _settlementRepository.watchBillsForGroups(groups).listen(
+        (bills) {
+          _recomputeAndEmit(userUid: userUid, groups: groups, bills: bills);
+        },
       );
     });
 
@@ -104,14 +123,48 @@ class GroupCubit extends Cubit<GroupDashboardState> {
         .watchUserNotifications(userUid)
         .listen((notifications) {
       final unread = notifications.where((n) => !n.isRead).length;
-      final balance = _settlementRepository.calculateUserBalance(userUid);
-      emit(
-        state.copyWith(
-          unreadNotifCount: unread,
-          overallBalance: balance,
-        ),
-      );
+      emit(state.copyWith(unreadNotifCount: unread));
     });
+  }
+
+  void _recomputeAndEmit({
+    required String userUid,
+    required List<GroupModel> groups,
+    required List<BillModel> bills,
+  }) {
+    final validGroupIds = groups.map((g) => g.groupId).toSet();
+    final scopedBills =
+        bills.where((b) => validGroupIds.contains(b.groupId)).toList();
+
+    final overallBalance = _settlementRepository.calculateUserBalanceFromBills(
+      userUid: userUid,
+      bills: scopedBills,
+    );
+
+    final Map<String, UserBalanceSummary> perGroup = {
+      for (final g in groups)
+        g.groupId: _settlementRepository.calculateUserBalanceFromBills(
+          userUid: userUid,
+          bills: scopedBills,
+          groupIdFilter: g.groupId,
+        ),
+    };
+
+    final actionable = _settlementRepository.buildActionableBills(
+      userUid: userUid,
+      groups: groups,
+      bills: scopedBills,
+    );
+
+    emit(
+      state.copyWith(
+        groups: groups,
+        allBills: scopedBills,
+        overallBalance: overallBalance,
+        balanceByGroup: perGroup,
+        actionableBills: actionable,
+      ),
+    );
   }
 
   Future<GroupModel?> createGroup({
@@ -145,6 +198,15 @@ class GroupCubit extends Cubit<GroupDashboardState> {
         ),
       );
       return null;
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          feedbackMessage: 'Gagal membuat grup: $e',
+          isErrorFeedback: true,
+        ),
+      );
+      return null;
     }
   }
 
@@ -174,15 +236,22 @@ class GroupCubit extends Cubit<GroupDashboardState> {
         ),
       );
       return null;
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          feedbackMessage: 'Gagal bergabung ke grup: $e',
+          isErrorFeedback: true,
+        ),
+      );
+      return null;
     }
   }
-
-  GroupRole? getRoleInGroup(String groupId, String userUid) =>
-      _groupRepository.getUserRoleInGroup(groupId, userUid);
 
   @override
   Future<void> close() {
     _groupsSub?.cancel();
+    _billsSub?.cancel();
     _notifSub?.cancel();
     return super.close();
   }

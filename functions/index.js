@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * FIREBASE CLOUD FUNCTIONS - SMART SPLIT-BILL & BUDGET
+ * FIREBASE CLOUD FUNCTIONS - PATUNGIN
  * Penanggung Jawab: Anggota 3 (Real-Time Settlement, Firestore Sync & FCM)
  * Menangani pengiriman Push Notification FCM secara aman dari sisi server
  * tanpa menyimpan server key di klien (NFR-01, FR-06, DFD Proses 6.0).
@@ -61,7 +61,7 @@ exports.onNotificationCreated = functions.firestore
 
     const messagePayload = {
       notification: {
-        title: titleMap[notif.type] || "Smart Split-Bill",
+        title: titleMap[notif.type] || "Patungin",
         body: notif.message || "Ada pembaruan pada tagihan grup Anda.",
       },
       data: {

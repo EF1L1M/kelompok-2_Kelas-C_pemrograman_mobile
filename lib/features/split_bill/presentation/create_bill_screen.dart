@@ -53,23 +53,26 @@ class _CreateBillScreenState extends State<CreateBillScreen> {
       final currentUser = context.read<AuthCubit>().currentUser;
       if (currentUser == null) return;
 
-      final members = context
+      final memberProfiles = await context
           .read<GroupRepository>()
           .getGroupMembersWithProfiles(
             groupId: widget.groupId,
             requesterUid: currentUser.uid,
-          )
-          .map((m) => m.user)
-          .toList();
+          );
+      final members = memberProfiles.map((m) => m.user).toList();
 
       RichBillDetail? existing;
       if (widget.editBillId != null) {
         existing = await context
             .read<BillSettlementRepository>()
-            .watchRichBillDetail(widget.editBillId!)
+            .watchRichBillDetail(
+              groupId: widget.groupId,
+              billId: widget.editBillId!,
+            )
             .first;
       }
 
+      if (!mounted) return;
       _splitCubit.initializeDraft(
         members: members,
         existingBill: existing,

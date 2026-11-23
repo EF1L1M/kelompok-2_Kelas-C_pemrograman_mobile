@@ -3,11 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/extensions/format_extensions.dart';
+import '../../../core/firebase/firebase_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validator_mixin.dart';
 import '../../../models/erd_models.dart';
 import '../../../repositories/bill_settlement_repository.dart';
-import '../../../repositories/group_repository.dart';
 import '../../auth/cubit/auth_cubit.dart';
 import '../../auth/cubit/auth_state.dart';
 import '../cubit/group_cubit.dart';
@@ -34,9 +34,6 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
       );
     }
 
-    final groupRepo = context.read<GroupRepository>();
-    final settlementRepo = context.read<BillSettlementRepository>();
-
     return BlocConsumer<GroupCubit, GroupDashboardState>(
       listener: (context, state) {
         if (state.feedbackMessage != null) {
@@ -52,8 +49,7 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
         }
       },
       builder: (context, groupState) {
-        final actionableBills =
-            settlementRepo.getActionableBillsForUser(currentUser.uid);
+        final actionableBills = groupState.actionableBills;
 
         final filteredGroups = groupState.groups.where((g) {
           if (_searchQuery.trim().isEmpty) return true;
@@ -72,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                   color: AppTheme.primaryEmerald,
                 ),
                 SizedBox(width: 10),
-                Text('Smart Split-Bill'),
+                Text('Patungin'),
               ],
             ),
             actions: [
@@ -110,9 +106,8 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                 ],
               ),
               IconButton(
-                tooltip: 'Profil & Ganti Akun',
-                onPressed: () =>
-                    _showProfileAndSwitchAccountSheet(context, currentUser),
+                tooltip: 'Profil Akun',
+                onPressed: () => _showProfileSheet(context, currentUser),
                 icon: const Icon(Icons.account_circle_outlined),
               ),
               IconButton(
@@ -280,15 +275,12 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                 )
               else
                 ...filteredGroups.map((group) {
-                  final role = context
-                      .read<GroupCubit>()
-                      .getRoleInGroup(group.groupId, currentUser.uid);
-                  final isAdmin = role == GroupRole.admin;
-                  final memberCount = groupRepo.getMemberCount(group.groupId);
-                  final groupBalance = settlementRepo.calculateUserBalance(
-                    currentUser.uid,
-                    groupIdFilter: group.groupId,
-                  );
+                  final isAdmin = group.adminUid == currentUser.uid;
+                  final memberCount = group.memberUids.isNotEmpty
+                      ? group.memberUids.length
+                      : 1;
+                  final groupBalance =
+                      groupState.balanceForGroup(group.groupId);
 
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -487,11 +479,10 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                     vertical: 8,
                   ),
                 ),
-                onPressed: () =>
-                    _showProfileAndSwitchAccountSheet(context, activeUser),
-                icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                onPressed: () => _showProfileSheet(context, activeUser),
+                icon: const Icon(Icons.person_outline_rounded, size: 16),
                 label: const Text(
-                  'Ganti Akun',
+                  'Profil',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -767,75 +758,108 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
     );
   }
 
-  void _showProfileAndSwitchAccountSheet(
+  void _showProfileSheet(
     BuildContext context,
     AppUser activeUser,
   ) {
-    final authCubit = context.read<AuthCubit>();
-    final users = authCubit.allUsers;
-
     showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(
-              'Profil & Beralih Akun',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Pilih akun di bawah untuk beralih sesi pengguna secara langsung:',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 12),
-            ...users.map((u) {
-              final isSelected = u.uid == activeUser.uid;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: isSelected
-                      ? AppTheme.primaryEmerald
-                      : const Color(0xFFE2E8F0),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: AppTheme.primaryEmerald,
                   child: Text(
-                    u.initials,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : AppTheme.darkSlate,
+                    activeUser.initials,
+                    style: const TextStyle(
+                      color: Colors.white,
                       fontWeight: FontWeight.w800,
+                      fontSize: 18,
                     ),
                   ),
                 ),
-                title: Text(
-                  u.fullName,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text(u.email),
-                trailing: isSelected
-                    ? const Icon(
-                        Icons.check_circle_rounded,
-                        color: AppTheme.primaryEmerald,
-                      )
-                    : TextButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          authCubit.switchDemoUser(u.uid);
-                        },
-                        child: const Text('Gunakan'),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        activeUser.fullName,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  if (!isSelected) {
-                    authCubit.switchDemoUser(u.uid);
-                  }
-                },
-              );
-            }),
+                      const SizedBox(height: 2),
+                      Text(
+                        activeUser.email,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'UID: ${activeUser.uid}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: Color(0xFF475569),
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    FirebaseAppConfig.useEmulator
+                        ? 'Backend: Firebase Local Emulator (${FirebaseAppConfig.emulatorHost})'
+                        : 'Backend: Firebase Cloud (${FirebaseAppConfig.projectId})',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.primaryEmerald,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.statusRejected,
+                side: const BorderSide(color: AppTheme.statusRejected),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await context.read<AuthCubit>().signOut();
+                if (context.mounted) context.go('/login');
+              },
+              icon: const Icon(Icons.logout_rounded),
+              label: const Text('Keluar dari Akun'),
+            ),
           ],
         ),
       ),

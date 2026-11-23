@@ -1,5 +1,5 @@
 name: smart_split_bill
-description: Aplikasi Smart Split-Bill & Budget - Proyek Akhir Pemrograman Mobile (Dart & Flutter SDK).
+description: Patungin - Aplikasi Smart Split-Bill & Patungan Grup - Proyek Akhir Pemrograman Mobile (Dart & Flutter SDK).
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -16,6 +16,11 @@ dependencies:
   # Open-Source API (Frankfurter v2 & OCR JSON) & Formatting
   http: ^1.2.2
   intl: ^0.19.0
+  # Firebase Backend (Auth + Cloud Firestore) & Local Preferences
+  firebase_core: ^3.8.1
+  firebase_auth: ^5.3.4
+  cloud_firestore: ^5.6.0
+  shared_preferences: ^2.3.3
 
 dev_dependencies:
   flutter_test:
