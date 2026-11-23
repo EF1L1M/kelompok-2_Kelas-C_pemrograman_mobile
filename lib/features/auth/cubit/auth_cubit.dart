@@ -7,9 +7,9 @@ import '../../../repositories/auth_repository.dart';
 import 'auth_state.dart';
 
 // ============================================================================
-// AUTH CUBIT (STATE MANAGEMENT - ANGGOTA 1)
-// Memantau Stream sesi secara real-time, menyimpan fcm_token ke USER_DEVICES,
-// dan menyediakan ChangeNotifier untuk GoRouter Auth Guard redirect.
+// AUTH CUBIT (FIREBASE AUTH STATE MANAGEMENT)
+// Memantau Stream sesi Firebase Auth secara real-time, menyimpan perangkat
+// ke USER_DEVICES, dan menyediakan ChangeNotifier untuk GoRouter Auth Guard.
 // ============================================================================
 
 class AuthCubit extends Cubit<AuthState> with ChangeNotifier {
@@ -17,50 +17,74 @@ class AuthCubit extends Cubit<AuthState> with ChangeNotifier {
   StreamSubscription<AppUser?>? _authSub;
 
   AuthCubit(this._authRepository) : super(const AuthInitial()) {
-    _authSub = _authRepository.authStateChanges.listen((user) {
-      if (user != null) {
-        emit(
-          AuthAuthenticated(
-            user: user,
-            fcmToken: _authRepository.getActiveFcmToken(user.uid),
-          ),
-        );
-      } else {
+    _authSub = _authRepository.authStateChanges.listen(
+      (user) {
+        if (user != null) {
+          emit(
+            AuthAuthenticated(
+              user: user,
+              fcmToken: _authRepository.getActiveFcmToken(user.uid),
+            ),
+          );
+        } else {
+          emit(
+            AuthUnauthenticated(
+              showOnboardingFirst: !_authRepository.hasSeenOnboarding,
+            ),
+          );
+        }
+        notifyListeners();
+      },
+      onError: (_) {
         emit(
           AuthUnauthenticated(
             showOnboardingFirst: !_authRepository.hasSeenOnboarding,
           ),
         );
-      }
-      notifyListeners();
-    });
+        notifyListeners();
+      },
+    );
   }
 
-  AppUser? get currentUser => _authRepository.currentUser;
-  List<AppUser> get allUsers => _authRepository.allRegisteredUsers;
+  AppUser? get currentUser {
+    final current = state;
+    if (current is AuthAuthenticated) return current.user;
+    return _authRepository.currentUser;
+  }
 
-  void completeOnboarding() {
-    _authRepository.markOnboardingComplete();
-    emit(const AuthUnauthenticated(showOnboardingFirst: false));
-    notifyListeners();
+  Future<void> completeOnboarding() async {
+    await _authRepository.markOnboardingComplete();
+    if (state is! AuthAuthenticated) {
+      emit(const AuthUnauthenticated(showOnboardingFirst: false));
+      notifyListeners();
+    }
   }
 
   Future<void> signInWithEmail({
     required String email,
     required String password,
   }) async {
-    emit(const AuthLoading('Masuk dengan Email & Kata Sandi...'));
+    emit(const AuthLoading('Masuk ke akun Patungin...'));
     try {
-      await _authRepository.signInWithEmailAndPassword(
+      final user = await _authRepository.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+      emit(
+        AuthAuthenticated(
+          user: user,
+          fcmToken: _authRepository.getActiveFcmToken(user.uid),
+        ),
+      );
+      notifyListeners();
     } on AppAuthException catch (e) {
       emit(AuthError(e.message));
       emit(const AuthUnauthenticated(showOnboardingFirst: false));
+      notifyListeners();
     } catch (e) {
       emit(AuthError('Gagal masuk: $e'));
       emit(const AuthUnauthenticated(showOnboardingFirst: false));
+      notifyListeners();
     }
   }
 
@@ -69,38 +93,44 @@ class AuthCubit extends Cubit<AuthState> with ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    emit(const AuthLoading('Mendaftarkan akun & menyimpan fcm_token...'));
+    emit(const AuthLoading('Mendaftarkan akun & menyiapkan profil...'));
     try {
-      await _authRepository.registerWithEmailAndPassword(
+      final user = await _authRepository.registerWithEmailAndPassword(
         fullName: fullName,
         email: email,
         password: password,
       );
+      emit(
+        AuthAuthenticated(
+          user: user,
+          fcmToken: _authRepository.getActiveFcmToken(user.uid),
+        ),
+      );
+      notifyListeners();
     } on AppAuthException catch (e) {
       emit(AuthError(e.message));
       emit(const AuthUnauthenticated(showOnboardingFirst: false));
+      notifyListeners();
     } catch (e) {
       emit(AuthError('Gagal mendaftar: $e'));
       emit(const AuthUnauthenticated(showOnboardingFirst: false));
+      notifyListeners();
     }
   }
 
-  Future<void> signInWithGoogle() async {
-    emit(const AuthLoading('Menghubungkan Google Sign-In...'));
+  Future<String?> sendPasswordResetEmail(String email) async {
     try {
-      await _authRepository.signInWithGoogle();
+      await _authRepository.sendPasswordResetEmail(email);
+      return null;
+    } on AppAuthException catch (e) {
+      return e.message;
     } catch (e) {
-      emit(AuthError('Google Sign-In gagal: $e'));
-      emit(const AuthUnauthenticated(showOnboardingFirst: false));
+      return 'Gagal mengirim tautan reset kata sandi: $e';
     }
-  }
-
-  Future<void> switchDemoUser(String uid) async {
-    await _authRepository.switchActiveUserForDemo(uid);
   }
 
   Future<void> signOut() async {
-    _authRepository.markOnboardingComplete();
+    await _authRepository.markOnboardingComplete();
     await _authRepository.signOut();
   }
 
