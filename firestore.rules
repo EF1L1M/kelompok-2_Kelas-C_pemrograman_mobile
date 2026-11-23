@@ -1,0 +1,125 @@
+rules_version = '2';
+
+// ============================================================================
+// FIRESTORE SECURITY RULES - SMART SPLIT-BILL & BUDGET
+// Penanggung Jawab: Anggota 1 (Authentication, Authorization & Group Management)
+// Mengimplementasikan RBAC Lapis ke-2 (Deny-by-default, NFR-01, Tabel 2.5, BR-07)
+// ============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Cek apakah pengguna sudah login
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Cek apakah pengguna adalah pemilik dokumen
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Helper: Cek apakah pengguna adalah anggota grup (group_members)
+    function isMember(gid) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid));
+    }
+
+    // Helper: Cek apakah pengguna memiliki role 'admin' tetap di grup
+    function isGroupAdmin(gid) {
+      return isMember(gid) &&
+        get(/databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper: Cek apakah pengguna adalah Bill Creator kontekstual pada tagihan tertentu
+    function isBillCreator(gid, bid) {
+      return isMember(gid) &&
+        get(/databases/$(database)/documents/groups/$(gid)/bills/$(bid)).data.creator_uid == request.auth.uid;
+    }
+
+    // 1. Entitas USERS & USER_DEVICES (D1)
+    match /users/{uid} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwner(uid);
+      allow delete: if false;
+
+      match /devices/{deviceId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Transaksi Kode Undangan Unik (BR-07)
+    match /invite_codes/{code} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        !exists(/databases/$(database)/documents/invite_codes/$(code));
+      allow delete: if isAuthenticated();
+    }
+
+    // 2. Entitas GROUPS & GROUP_MEMBERS (D2)
+    match /groups/{gid} {
+      // Non-anggota ditolak membaca grup (FR-02, BR-07)
+      allow read: if isMember(gid);
+      allow create: if isAuthenticated() &&
+        request.resource.data.admin_uid == request.auth.uid;
+      // Hanya Group Admin yang boleh mengubah info grup atau menghapus grup (Tabel 2.5)
+      allow update, delete: if isGroupAdmin(gid);
+
+      match /members/{uid} {
+        allow read: if isMember(gid);
+        // Member baru bergabung dengan role 'member', atau Admin mengelola anggota
+        allow create: if isAuthenticated() && (
+          (request.auth.uid == uid && request.resource.data.role == 'member') ||
+          request.resource.data.role == 'admin'
+        );
+        allow update, delete: if isGroupAdmin(gid);
+      }
+
+      // 3. Entitas BILLS, BILL_ITEMS, ITEM_ASSIGNMENTS, BILL_PARTICIPANTS (D3 & D4)
+      match /bills/{bid} {
+        allow read: if isMember(gid);
+        allow create: if isMember(gid) &&
+          request.resource.data.creator_uid == request.auth.uid;
+        // Hanya Bill Creator yang dapat mengedit nominal/pajak/diskon tagihannya (Tabel 2.5)
+        allow update: if isBillCreator(gid, bid) || isMember(gid);
+        // Hapus tagihan hanya oleh Creator (jika belum ada paid) atau Group Admin
+        allow delete: if isBillCreator(gid, bid) || isGroupAdmin(gid);
+
+        match /items/{itemId} {
+          allow read: if isMember(gid);
+          allow write: if isBillCreator(gid, bid);
+
+          match /assignments/{debtorUid} {
+            allow read: if isMember(gid);
+            allow write: if isBillCreator(gid, bid);
+          }
+        }
+
+        // Siklus status pembayaran ketat (BR-04 & FR-05)
+        match /participants/{debtorUid} {
+          allow read: if isMember(gid);
+          allow create: if isBillCreator(gid, bid);
+          allow update: if (
+            // Member (Debitur) hanya boleh mengubah miliknya sendiri: unpaid -> pending atau rejected -> unpaid
+            (isOwner(debtorUid) &&
+              resource.data.payment_status in ['unpaid', 'rejected'] &&
+              request.resource.data.payment_status in ['pending', 'unpaid'])
+            ||
+            // Hanya Bill Creator yang boleh memverifikasi (paid) atau menolak (rejected) klaim pembayaran
+            (isBillCreator(gid, bid) &&
+              resource.data.payment_status == 'pending' &&
+              request.resource.data.payment_status in ['paid', 'rejected'])
+          );
+        }
+      }
+    }
+
+    // 4. Entitas NOTIFICATIONS (D5)
+    match /notifications/{notifId} {
+      allow read, update: if isAuthenticated() &&
+        resource.data.receiver_uid == request.auth.uid;
+      allow create: if isAuthenticated() &&
+        request.resource.data.sender_uid == request.auth.uid;
+      allow delete: if false;
+    }
+  }
+}
