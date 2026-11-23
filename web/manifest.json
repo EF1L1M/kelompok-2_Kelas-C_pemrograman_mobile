@@ -1,11 +1,11 @@
 {
-    "name": "smart_split_bill",
-    "short_name": "smart_split_bill",
+    "name": "Patungin",
+    "short_name": "Patungin",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Patungin — Aplikasi Smart Split-Bill & Patungan Grup Real-Time.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

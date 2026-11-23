@@ -1,163 +1,222 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/exceptions/auth_exception.dart';
+import '../core/firebase/firebase_config.dart';
 import '../models/erd_models.dart';
-import 'mock_realtime_database.dart';
 
 // ============================================================================
-// AUTHENTICATION REPOSITORY (FR-01, UFD-1, BAB 6 ANGGOTA 1)
-// Memantau sesi real-time dengan Stream, mengelola masuk/daftar (Email & Google),
-// dan menyimpan fcm_token ke entitas USER_DEVICES saat login.
+// AUTHENTICATION REPOSITORY (FIREBASE AUTH + CLOUD FIRESTORE)
+// Memantau sesi real-time melalui FirebaseAuth.authStateChanges(), mengelola
+// registrasi & login Email/Kata Sandi, menyimpan profil ke users/{uid}, serta
+// mencatat perangkat aktif ke users/{uid}/devices/{deviceId}.
 // ============================================================================
 
 class AuthRepository {
-  final RealtimeDatabaseStore _store = RealtimeDatabaseStore.instance;
-  final StreamController<AppUser?> _authStateController =
-      StreamController<AppUser?>.broadcast();
+  static const String _onboardingPrefKey = 'patungin_has_seen_onboarding';
+
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _firestore;
 
   AppUser? _currentUser;
+  String _activeFcmToken = 'fcm_token_unregistered';
   bool _hasSeenOnboarding = false;
 
-  AuthRepository() {
-    // Default masuk sebagai Andi Pratama (Anggota 1 - Group Admin & Bill Creator)
-    // agar saat buka aplikasi bisa langsung dieksplorasi atau logout ke UFD-1.
-    _currentUser = _store.users['u_andi'];
-  }
+  AuthRepository({
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+  })  : _auth = auth ?? FirebaseAuth.instance,
+        _firestore = firestore ?? FirebaseFirestore.instance;
 
   AppUser? get currentUser => _currentUser;
   bool get hasSeenOnboarding => _hasSeenOnboarding;
+  bool get isUsingEmulator => FirebaseAppConfig.useEmulator;
 
-  void markOnboardingComplete() {
+  /// Muat status onboarding dari penyimpanan lokal perangkat
+  Future<void> loadPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _hasSeenOnboarding = prefs.getBool(_onboardingPrefKey) ?? false;
+    } catch (_) {
+      _hasSeenOnboarding = false;
+    }
+  }
+
+  Future<void> markOnboardingComplete() async {
     _hasSeenOnboarding = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_onboardingPrefKey, true);
+    } catch (_) {}
   }
 
-  /// Stream real-time perubahan sesi autentikasi (FR-01)
-  Stream<AppUser?> get authStateChanges async* {
-    yield _currentUser;
-    yield* _authStateController.stream;
+  /// Stream real-time perubahan sesi autentikasi dari FirebaseAuth (FR-01)
+  Stream<AppUser?> get authStateChanges {
+    return _auth.authStateChanges().asyncMap((firebaseUser) async {
+      if (firebaseUser == null) {
+        _currentUser = null;
+        _activeFcmToken = 'fcm_token_unregistered';
+        return null;
+      }
+
+      final profile = await _fetchOrCreateUserProfile(firebaseUser);
+      await _registerDeviceToken(profile.uid);
+      _currentUser = profile;
+      return profile;
+    });
   }
 
-  /// Daftar semua pengguna terdaftar (untuk keperluan tampilan profil & demo switch)
-  List<AppUser> get allRegisteredUsers => _store.users.values.toList();
-
-  /// Masuk dengan Email & Kata Sandi (FR-01 & UFD-1)
+  /// Masuk dengan Email & Kata Sandi via FirebaseAuth
   Future<AppUser> signInWithEmailAndPassword({
     required String email,
     required String password,
   }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 450));
     final normalizedEmail = email.trim().toLowerCase();
-
-    AppUser? matchedUser;
-    for (final u in _store.users.values) {
-      if (u.email.toLowerCase() == normalizedEmail) {
-        matchedUser = u;
-        break;
+    try {
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: normalizedEmail,
+        password: password,
+      );
+      final fbUser = credential.user;
+      if (fbUser == null) {
+        throw AppAuthException.fromFirebaseCode('user-not-found');
       }
-    }
 
-    if (matchedUser == null) {
-      throw AppAuthException.fromFirebaseCode('user-not-found');
+      final profile = await _fetchOrCreateUserProfile(fbUser);
+      await _registerDeviceToken(profile.uid);
+      _currentUser = profile;
+      return profile;
+    } on FirebaseAuthException catch (e) {
+      throw AppAuthException.fromFirebaseCode(e.code);
+    } on FirebaseException catch (e) {
+      throw AppAuthException.fromFirebaseCode(e.code);
     }
-
-    final savedPass = _store.userPasswords[normalizedEmail] ?? '123456';
-    if (password != savedPass) {
-      throw AppAuthException.fromFirebaseCode('invalid-credential');
-    }
-
-    await _registerFcmDeviceToken(matchedUser.uid);
-    _currentUser = matchedUser;
-    _authStateController.add(_currentUser);
-    _store.notifyChanges();
-    return matchedUser;
   }
 
-  /// Registrasi Akun Baru (FR-01 & UFD-1)
+  /// Registrasi Akun Baru via FirebaseAuth + simpan profil ke Firestore `users/{uid}`
   Future<AppUser> registerWithEmailAndPassword({
     required String fullName,
     required String email,
     required String password,
   }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 500));
     final normalizedEmail = email.trim().toLowerCase();
+    final trimmedName = fullName.trim();
 
-    final exists = _store.users.values.any(
-      (u) => u.email.toLowerCase() == normalizedEmail,
-    );
-    if (exists) {
-      throw AppAuthException.fromFirebaseCode('email-already-in-use');
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: normalizedEmail,
+        password: password,
+      );
+      final fbUser = credential.user;
+      if (fbUser == null) {
+        throw AppAuthException.fromFirebaseCode('unknown');
+      }
+
+      await fbUser.updateDisplayName(trimmedName);
+
+      final newUser = AppUser(
+        uid: fbUser.uid,
+        fullName: trimmedName,
+        email: normalizedEmail,
+        photoUrl: fbUser.photoURL ?? '',
+        createdAt: DateTime.now(),
+      );
+
+      await _firestore
+          .collection('users')
+          .doc(newUser.uid)
+          .set(newUser.toMap(), SetOptions(merge: true));
+
+      await _registerDeviceToken(newUser.uid);
+      await markOnboardingComplete();
+      _currentUser = newUser;
+      return newUser;
+    } on FirebaseAuthException catch (e) {
+      throw AppAuthException.fromFirebaseCode(e.code);
+    } on FirebaseException catch (e) {
+      throw AppAuthException.fromFirebaseCode(e.code);
     }
-
-    final uid = 'u_${DateTime.now().millisecondsSinceEpoch}';
-    final newUser = AppUser(
-      uid: uid,
-      fullName: fullName.trim(),
-      email: normalizedEmail,
-      photoUrl: '',
-      createdAt: DateTime.now(),
-    );
-
-    _store.users[uid] = newUser;
-    _store.userPasswords[normalizedEmail] = password;
-    await _registerFcmDeviceToken(uid);
-
-    _currentUser = newUser;
-    _authStateController.add(_currentUser);
-    _store.notifyChanges();
-    return newUser;
   }
 
-  /// Masuk dengan Akun Google (Google Sign-In - FR-01 & UFD-1)
-  Future<AppUser> signInWithGoogle() async {
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    final user = _store.users['u_andi']!;
-    await _registerFcmDeviceToken(user.uid);
-    _currentUser = user;
-    _authStateController.add(_currentUser);
-    _store.notifyChanges();
+  /// Kirim email reset kata sandi via FirebaseAuth
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim().toLowerCase());
+    } on FirebaseAuthException catch (e) {
+      throw AppAuthException.fromFirebaseCode(e.code);
+    }
+  }
+
+  /// Ambil profil pengguna dari koleksi `users/{uid}` atau buat jika belum ada
+  Future<AppUser> _fetchOrCreateUserProfile(User fbUser) async {
+    final docRef = _firestore.collection('users').doc(fbUser.uid);
+    try {
+      final snapshot = await docRef.get();
+      if (snapshot.exists && snapshot.data() != null) {
+        return AppUser.fromMap(snapshot.data()!, docId: fbUser.uid);
+      }
+    } catch (_) {
+      // Fallback jika Firestore sedang tidak dapat dijangkau sesaat
+    }
+
+    final fallbackName = (fbUser.displayName ?? '').trim().isNotEmpty
+        ? fbUser.displayName!.trim()
+        : (fbUser.email ?? 'Pengguna').split('@').first;
+
+    final user = AppUser(
+      uid: fbUser.uid,
+      fullName: fallbackName,
+      email: (fbUser.email ?? '').toLowerCase(),
+      photoUrl: fbUser.photoURL ?? '',
+      createdAt: fbUser.metadata.creationTime ?? DateTime.now(),
+    );
+
+    try {
+      await docRef.set(user.toMap(), SetOptions(merge: true));
+    } catch (_) {}
     return user;
   }
 
-  /// Fitur Demo/Responsi: Berpindah antar akun (Admin, Creator, Debitur, Non-Anggota)
-  /// secara instan untuk mendemonstrasikan RBAC & Multi-Device Real-Time Sync.
-  Future<AppUser> switchActiveUserForDemo(String targetUid) async {
-    final user = _store.users[targetUid];
-    if (user == null) {
-      throw AppAuthException.fromFirebaseCode('user-not-found');
-    }
-    await _registerFcmDeviceToken(user.uid);
-    _currentUser = user;
-    _authStateController.add(_currentUser);
-    _store.notifyChanges();
-    return user;
-  }
+  /// Catat perangkat aktif pengguna ke `users/{uid}/devices/{deviceId}`
+  Future<void> _registerDeviceToken(String uid) async {
+    final String platform = kIsWeb
+        ? 'web'
+        : switch (defaultTargetPlatform) {
+            TargetPlatform.android => 'android',
+            TargetPlatform.iOS => 'ios',
+            _ => 'desktop',
+          };
+    final deviceId = 'dev_${platform}_active';
+    final token =
+        'fcm_${FirebaseAppConfig.useEmulator ? 'emulator' : 'live'}_${platform}_${uid.substring(0, uid.length >= 6 ? 6 : uid.length)}';
+    _activeFcmToken = token;
 
-  /// Simpan fcm_token perangkat ke koleksi USER_DEVICES saat login (FR-01, Erd #2)
-  Future<void> _registerFcmDeviceToken(String uid) async {
-    final deviceId = 'dev_${uid}_active';
-    _store.userDevices.removeWhere(
-      (d) => d.userUid == uid && d.deviceId == deviceId,
+    final device = UserDevice(
+      deviceId: deviceId,
+      userUid: uid,
+      fcmToken: token,
+      platform: platform,
+      updatedAt: DateTime.now(),
     );
-    _store.userDevices.add(
-      UserDevice(
-        deviceId: deviceId,
-        userUid: uid,
-        fcmToken: 'fcm_live_${uid}_${DateTime.now().millisecondsSinceEpoch}',
-        platform: 'android',
-        updatedAt: DateTime.now(),
-      ),
-    );
+
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .collection('devices')
+          .doc(deviceId)
+          .set(device.toMap(), SetOptions(merge: true));
+    } catch (_) {}
   }
 
   /// Ambil FCM token aktif untuk ditampilkan pada informasi sesi
-  String getActiveFcmToken(String uid) {
-    final matches = _store.userDevices.where((d) => d.userUid == uid);
-    if (matches.isEmpty) return 'fcm_token_unregistered';
-    return matches.last.fcmToken;
-  }
+  String getActiveFcmToken(String uid) => _activeFcmToken;
 
   Future<void> signOut() async {
+    await _auth.signOut();
     _currentUser = null;
-    _authStateController.add(null);
-    _store.notifyChanges();
+    _activeFcmToken = 'fcm_token_unregistered';
   }
 }

@@ -26,13 +26,29 @@ class BillDetailScreen extends StatefulWidget {
 
 class _BillDetailScreenState extends State<BillDetailScreen> {
   late final SettlementCubit _settlementCubit;
+  bool _isGroupAdmin = false;
 
   @override
   void initState() {
     super.initState();
     _settlementCubit =
         SettlementCubit(context.read<BillSettlementRepository>())
-          ..watchBill(widget.billId);
+          ..watchBill(
+            groupId: widget.groupId,
+            billId: widget.billId,
+          );
+    _loadGroupRole();
+  }
+
+  Future<void> _loadGroupRole() async {
+    final uid = context.read<AuthCubit>().currentUser?.uid;
+    if (uid == null) return;
+    final role = await context
+        .read<GroupRepository>()
+        .getUserRoleInGroup(widget.groupId, uid);
+    if (mounted) {
+      setState(() => _isGroupAdmin = role == GroupRole.admin);
+    }
   }
 
   @override
@@ -75,10 +91,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
 
           final bill = detail.bill;
           final bool isBillCreator = bill.creatorUid == currentUser.uid;
-          final GroupRole? groupRole = context
-              .read<GroupRepository>()
-              .getUserRoleInGroup(widget.groupId, currentUser.uid);
-          final bool isGroupAdmin = groupRole == GroupRole.admin;
+          final bool isGroupAdmin = _isGroupAdmin;
 
           final ParticipantWithProfile? myParticipant = detail.participants
               .where((p) => p.user.uid == currentUser.uid)
@@ -88,15 +101,6 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
             appBar: AppBar(
               title: const Text('Rincian & Pelunasan'),
               actions: [
-                IconButton(
-                  tooltip: 'Beralih Akun Peserta',
-                  icon: const Icon(Icons.swap_horiz_rounded),
-                  onPressed: () => _showSwitchParticipantSheet(
-                    context,
-                    detail: detail,
-                    activeUid: currentUser.uid,
-                  ),
-                ),
                 if (isBillCreator)
                   IconButton(
                     tooltip: 'Edit Tagihan',
@@ -435,6 +439,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                         child: OutlinedButton(
                           onPressed: () =>
                               _settlementCubit.resetRejectedToUnpaid(
+                            groupId: widget.groupId,
                             billId: bill.billId,
                             debtorUid: part.debtorUid,
                           ),
@@ -569,6 +574,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
               onPressed: () {
                 Navigator.pop(ctx);
                 _settlementCubit.markAsPaidPending(
+                  groupId: widget.groupId,
                   billId: detail.bill.billId,
                   debtorUid: debtorUid,
                 );
@@ -662,6 +668,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                         foregroundColor: AppTheme.statusRejected,
                       ),
                       onPressed: () => _settlementCubit.verifyOrReject(
+                        groupId: widget.groupId,
                         billId: detail.bill.billId,
                         requesterUid: creatorUid,
                         debtorUid: claim.user.uid,
@@ -672,6 +679,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                     const SizedBox(width: 8),
                     ElevatedButton(
                       onPressed: () => _settlementCubit.verifyOrReject(
+                        groupId: widget.groupId,
                         billId: detail.bill.billId,
                         requesterUid: creatorUid,
                         debtorUid: claim.user.uid,
@@ -801,6 +809,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                               ),
                               onPressed: () =>
                                   _settlementCubit.sendReminderNudge(
+                                groupId: widget.groupId,
                                 billId: detail.bill.billId,
                                 requesterUid: currentUid,
                                 targetDebtorUid: item.user.uid,
@@ -821,6 +830,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                               ),
                               onPressed: () =>
                                   _settlementCubit.verifyOrReject(
+                                groupId: widget.groupId,
                                 billId: detail.bill.billId,
                                 requesterUid: currentUid,
                                 debtorUid: item.user.uid,
@@ -832,6 +842,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                             ElevatedButton(
                               onPressed: () =>
                                   _settlementCubit.verifyOrReject(
+                                groupId: widget.groupId,
                                 billId: detail.bill.billId,
                                 requesterUid: currentUid,
                                 debtorUid: item.user.uid,
@@ -912,80 +923,6 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
     );
   }
 
-  void _showSwitchParticipantSheet(
-    BuildContext context, {
-    required RichBillDetail detail,
-    required String activeUid,
-  }) {
-    final authCubit = context.read<AuthCubit>();
-
-    showModalBottomSheet<void>(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Beralih Akun Peserta',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Pilih peserta untuk melihat tampilan tagihan dari sisi akun tersebut:',
-              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-            ),
-            const SizedBox(height: 12),
-            ...detail.participants.map((p) {
-              final isMe = p.user.uid == activeUid;
-              final isCreator = p.user.uid == detail.bill.creatorUid;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: isMe
-                      ? AppTheme.primaryEmerald
-                      : const Color(0xFFE2E8F0),
-                  child: Text(
-                    p.user.initials,
-                    style: TextStyle(
-                      color: isMe ? Colors.white : AppTheme.darkSlate,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                title: Text(
-                  p.user.fullName,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: Text(
-                  isCreator
-                      ? 'Penalang Tagihan'
-                      : 'Peserta · ${p.participant.paymentStatus.label}',
-                ),
-                trailing: isMe
-                    ? const Icon(
-                        Icons.check_circle_rounded,
-                        color: AppTheme.primaryEmerald,
-                      )
-                    : null,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  if (!isMe) {
-                    authCubit.switchDemoUser(p.user.uid);
-                  }
-                },
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _handleDeleteBill(
     BuildContext context, {
     required String billId,
@@ -993,6 +930,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
   }) async {
     try {
       await context.read<BillSettlementRepository>().deleteBill(
+            groupId: widget.groupId,
             billId: billId,
             requesterUid: requesterUid,
           );

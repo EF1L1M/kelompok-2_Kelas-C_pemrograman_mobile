@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/firebase/firebase_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validator_mixin.dart';
 import '../cubit/auth_cubit.dart';
@@ -15,8 +16,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController(text: 'andi@mahasiswa.ac.id');
-  final _passwordController = TextEditingController(text: '123456');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
   @override
@@ -28,11 +29,77 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
 
   void _submitLogin() {
     if (_formKey.currentState?.validate() ?? false) {
+      FocusScope.of(context).unfocus();
       context.read<AuthCubit>().signInWithEmail(
             email: _emailController.text,
             password: _passwordController.text,
           );
     }
+  }
+
+  void _showForgotPasswordDialog() {
+    final resetCtrl = TextEditingController(text: _emailController.text.trim());
+    final resetFormKey = GlobalKey<FormState>();
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset Kata Sandi'),
+        content: Form(
+          key: resetFormKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Masukkan email yang terdaftar di Patungin untuk menerima tautan pengaturan ulang kata sandi.',
+                style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: resetCtrl,
+                keyboardType: TextInputType.emailAddress,
+                validator: validateEmail,
+                decoration: const InputDecoration(
+                  labelText: 'Alamat Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (!(resetFormKey.currentState?.validate() ?? false)) return;
+              final email = resetCtrl.text.trim();
+              Navigator.pop(ctx);
+              final err = await context
+                  .read<AuthCubit>()
+                  .sendPasswordResetEmail(email);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    err ??
+                        'Tautan reset kata sandi telah dikirim ke $email (cek log Auth Emulator jika menggunakan emulator lokal).',
+                  ),
+                  backgroundColor: err != null
+                      ? AppTheme.statusRejected
+                      : AppTheme.primaryEmerald,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: const Text('Kirim Tautan'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -63,7 +130,7 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(24),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
+                  constraints: const BoxConstraints(maxWidth: 440),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -88,9 +155,9 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Smart Split-Bill & Budget',
+                                  'Patungin',
                                   style: TextStyle(
-                                    fontSize: 21,
+                                    fontSize: 22,
                                     fontWeight: FontWeight.w800,
                                     color: AppTheme.darkSlate,
                                   ),
@@ -110,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                       const SizedBox(height: 28),
                       Card(
                         child: Padding(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(22),
                           child: Form(
                             key: _formKey,
                             child: Column(
@@ -119,17 +186,28 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                                 const Text(
                                   'Masuk ke Akun Anda',
                                   style: TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Gunakan email dan kata sandi yang sudah terdaftar.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
                                 TextFormField(
                                   controller: _emailController,
                                   keyboardType: TextInputType.emailAddress,
+                                  textInputAction: TextInputAction.next,
+                                  autofillHints: const [AutofillHints.email],
                                   validator: validateEmail,
                                   decoration: const InputDecoration(
                                     labelText: 'Alamat Email',
+                                    hintText: 'contoh@email.com',
                                     prefixIcon: Icon(Icons.email_outlined),
                                   ),
                                 ),
@@ -137,6 +215,9 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                                 TextFormField(
                                   controller: _passwordController,
                                   obscureText: _obscurePassword,
+                                  textInputAction: TextInputAction.done,
+                                  autofillHints: const [AutofillHints.password],
+                                  onFieldSubmitted: (_) => _submitLogin(),
                                   validator: validatePassword,
                                   decoration: InputDecoration(
                                     labelText: 'Kata Sandi',
@@ -154,7 +235,16 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 20),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: isLoading
+                                        ? null
+                                        : _showForgotPasswordDialog,
+                                    child: const Text('Lupa Kata Sandi?'),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
                                 ElevatedButton.icon(
                                   onPressed: isLoading ? null : _submitLogin,
                                   icon: isLoading
@@ -168,30 +258,7 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                                         )
                                       : const Icon(Icons.login_rounded),
                                   label: Text(
-                                    isLoading
-                                        ? 'Memproses...'
-                                        : 'Masuk',
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                OutlinedButton.icon(
-                                  onPressed: isLoading
-                                      ? null
-                                      : () => context
-                                          .read<AuthCubit>()
-                                          .signInWithGoogle(),
-                                  icon: const Icon(
-                                    Icons.g_mobiledata_rounded,
-                                    size: 26,
-                                  ),
-                                  label: const Text('Lanjutkan dengan Google'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                                    isLoading ? 'Memproses...' : 'Masuk',
                                   ),
                                 ),
                               ],
@@ -199,93 +266,15 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(
-                                  Icons.switch_account_rounded,
-                                  size: 18,
-                                  color: AppTheme.primaryEmerald,
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Masuk Cepat Akun Tersimpan',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                      color: AppTheme.darkSlate,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _SavedAccountChip(
-                                  label: 'Andi Pratama',
-                                  subtitle: 'andi@mahasiswa.ac.id',
-                                  onTap: () {
-                                    _emailController.text =
-                                        'andi@mahasiswa.ac.id';
-                                    _passwordController.text = '123456';
-                                    _submitLogin();
-                                  },
-                                ),
-                                _SavedAccountChip(
-                                  label: 'Budi Santoso',
-                                  subtitle: 'budi@mahasiswa.ac.id',
-                                  onTap: () {
-                                    _emailController.text =
-                                        'budi@mahasiswa.ac.id';
-                                    _passwordController.text = '123456';
-                                    _submitLogin();
-                                  },
-                                ),
-                                _SavedAccountChip(
-                                  label: 'Citra Lestari',
-                                  subtitle: 'citra@mahasiswa.ac.id',
-                                  onTap: () {
-                                    _emailController.text =
-                                        'citra@mahasiswa.ac.id';
-                                    _passwordController.text = '123456';
-                                    _submitLogin();
-                                  },
-                                ),
-                                _SavedAccountChip(
-                                  label: 'Doni Kusuma',
-                                  subtitle: 'doni@luar.ac.id',
-                                  onTap: () {
-                                    _emailController.text = 'doni@luar.ac.id';
-                                    _passwordController.text = '123456';
-                                    _submitLogin();
-                                  },
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 18),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Text('Belum punya akun? '),
                           TextButton(
-                            onPressed: () => context.go('/register'),
+                            onPressed: isLoading
+                                ? null
+                                : () => context.go('/register'),
                             child: const Text(
                               'Daftar Sekarang',
                               style: TextStyle(fontWeight: FontWeight.w700),
@@ -293,11 +282,51 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                           ),
                           const Text('·'),
                           TextButton(
-                            onPressed: () => context.go('/onboarding'),
+                            onPressed: isLoading
+                                ? null
+                                : () => context.go('/onboarding'),
                             child: const Text('Info Fitur'),
                           ),
                         ],
                       ),
+                      if (FirebaseAppConfig.useEmulator) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: AppTheme.primaryEmerald
+                                  .withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.dns_rounded,
+                                size: 15,
+                                color: AppTheme.primaryEmerald,
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  'Mode Firebase Emulator (${FirebaseAppConfig.emulatorHost}:${FirebaseAppConfig.authEmulatorPort})',
+                                  style: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF065F46),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -306,35 +335,6 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
           ),
         );
       },
-    );
-  }
-}
-
-class _SavedAccountChip extends StatelessWidget {
-  final String label;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _SavedAccountChip({
-    required this.label,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      avatar: const Icon(
-        Icons.account_circle_outlined,
-        size: 17,
-        color: AppTheme.primaryEmerald,
-      ),
-      label: Text(
-        '$label ($subtitle)',
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-      ),
-      onPressed: onTap,
-      backgroundColor: Colors.white,
     );
   }
 }
