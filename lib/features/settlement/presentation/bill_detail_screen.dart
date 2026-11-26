@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/exceptions/auth_exception.dart';
 import '../../../core/extensions/format_extensions.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/patungin_patterns.dart';
 import '../../../models/erd_models.dart';
 import '../../../repositories/bill_settlement_repository.dart';
 import '../../../repositories/group_repository.dart';
@@ -75,7 +76,6 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                 backgroundColor: state.isError
                     ? AppTheme.statusRejected
                     : AppTheme.primaryEmerald,
-                behavior: SnackBarBehavior.floating,
               ),
             );
           }
@@ -84,7 +84,8 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
           final detail = state.detail;
           if (state.isLoading || detail == null) {
             return Scaffold(
-              appBar: AppBar(title: const Text('Rincian Tagihan')),
+              backgroundColor: AppTheme.warmCream,
+              appBar: AppBar(title: const Text('Struk Tagihan')),
               body: const Center(child: CircularProgressIndicator()),
             );
           }
@@ -98,8 +99,9 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
               .firstOrNull;
 
           return Scaffold(
+            backgroundColor: AppTheme.warmCream,
             appBar: AppBar(
-              title: const Text('Rincian & Pelunasan'),
+              title: const Text('Struk & Pelunasan'),
               actions: [
                 if (isBillCreator)
                   IconButton(
@@ -125,13 +127,13 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
               ],
             ),
             body: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 44),
               children: [
-                // 1. Kartu Header Tagihan & Progress Pelunasan
-                _buildBillHeaderCard(detail),
-                const SizedBox(height: 16),
+                // 1. Struk Fisik Bergerigi Sungguhan + Progress Ring Melingkar
+                _buildScallopedReceiptHeader(detail),
+                const SizedBox(height: 22),
 
-                // 2. Panel Aksi Pembayaran / Verifikasi sesuai Peran Pengguna
+                // 2. Pita Aksi Organik sesuai Peran (Penalang / Peserta)
                 if (isBillCreator)
                   _buildCreatorVerificationPanel(
                     context,
@@ -144,19 +146,19 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                     detail: detail,
                     myParticipant: myParticipant,
                   ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
-                // 3. Daftar Seluruh Peserta & Status Pelunasan
-                _buildAllParticipantsStatusCard(
+                // 3. Daftar Peserta bergaya Ledger Terbuka (tanpa kotak berulang)
+                _buildParticipantsLedger(
                   context,
                   detail: detail,
                   isBillCreator: isBillCreator,
                   currentUid: currentUser.uid,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
 
-                // 4. Rincian Pesanan pada Struk
-                _buildReceiptItemsBreakdownCard(detail),
+                // 4. Potongan Struk Daftar Item Pesanan
+                _buildReceiptItemsSlip(detail),
               ],
             ),
           );
@@ -165,164 +167,135 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
     );
   }
 
-  Widget _buildBillHeaderCard(RichBillDetail detail) {
+  Widget _buildScallopedReceiptHeader(RichBillDetail detail) {
     final bill = detail.bill;
     final isSettled = bill.status == BillStatus.settled;
     final totalParticipants = detail.participants.length;
     final paidParticipants = detail.paidCount;
     final progress =
         totalParticipants > 0 ? paidParticipants / totalParticipants : 1.0;
+    final stampColor = isSettled ? AppTheme.statusPaid : AppTheme.statusPending;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
+    return ScallopedReceiptSurface(
+      topEdge: true,
+      bottomEdge: true,
+      notchYFraction: 0.48,
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkStampBadge(
+                      text: bill.status.label,
+                      color: stampColor,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      bill.title,
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                        color: AppTheme.darkSlate,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Ditalangi ${detail.creator.fullName} · ${bill.createdAt.toIndoDate()}',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: AppTheme.mutedInk,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                children: [
+                  CircularProgressRing(
+                    progress: progress,
+                    size: 62,
                     color: isSettled
-                        ? AppTheme.statusPaid.withValues(alpha: 0.15)
-                        : AppTheme.statusPending.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(8),
+                        ? AppTheme.statusPaid
+                        : AppTheme.primaryEmerald,
+                    centerText: '$paidParticipants/$totalParticipants',
                   ),
-                  child: Text(
-                    bill.status.label,
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Lunas',
                     style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w800,
-                      color: isSettled
-                          ? AppTheme.statusPaid
-                          : const Color(0xFFB45309),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.mutedInk,
                     ),
                   ),
-                ),
-                const Spacer(),
-                Text(
-                  bill.createdAt.toIndoDateTime(),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              bill.title,
-              style: const TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.w800,
+                ],
               ),
+            ],
+          ),
+          if (bill.currencyCode != 'IDR') ...[
+            const SizedBox(height: 12),
+            DashedCouponChip(
+              icon: Icons.currency_exchange_rounded,
+              color: const Color(0xFF1F638C),
+              label:
+                  '1 ${bill.currencyCode} = ${bill.exchangeRate.toRupiah()} (${bill.rateDate.toIndoDate()})',
             ),
-            const SizedBox(height: 4),
-            Text(
-              'Ditalangi oleh: ${detail.creator.fullName}',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF475569),
-                fontWeight: FontWeight.w600,
+          ],
+          const SizedBox(height: 18),
+          const DashedDivider(),
+          const SizedBox(height: 16),
+          _SummaryRow(
+            label: 'Subtotal Pesanan',
+            value: bill.subtotalIdr.toRupiah(),
+          ),
+          _SummaryRow(
+            label: 'Pajak Restoran (PB1)',
+            value: '+ ${bill.taxAmountIdr.toRupiah()}',
+          ),
+          _SummaryRow(
+            label: 'Biaya Layanan',
+            value: '+ ${bill.serviceAmountIdr.toRupiah()}',
+          ),
+          _SummaryRow(
+            label: 'Diskon / Promo',
+            value: '- ${bill.discountAmountIdr.toRupiah()}',
+          ),
+          const SizedBox(height: 10),
+          const DashedDivider(),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'TOTAL STRUK',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  letterSpacing: 0.8,
+                  color: AppTheme.mutedInk,
+                ),
               ),
-            ),
-            if (bill.currencyCode != 'IDR') ...[
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF0F9FF),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Kurs Terkunci: 1 ${bill.currencyCode} = ${bill.exchangeRate.toRupiah()} (${bill.rateDate.toIndoDate()})',
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0369A1),
-                  ),
+              Text(
+                bill.grandTotalIdr.toRupiah(),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 22,
+                  letterSpacing: -0.6,
+                  color: AppTheme.primaryEmerald,
                 ),
               ),
             ],
-            const SizedBox(height: 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Progress Pelunasan ($paidParticipants/$totalParticipants Lunas)',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-                Text(
-                  '${(progress * 100).round()}%',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: AppTheme.primaryEmerald,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 7,
-                backgroundColor: const Color(0xFFE2E8F0),
-                color: AppTheme.primaryEmerald,
-              ),
-            ),
-            const Divider(height: 24),
-            _SummaryRow(
-              label: 'Subtotal Pesanan',
-              value: bill.subtotalIdr.toRupiah(),
-            ),
-            _SummaryRow(
-              label: 'Pajak Restoran (PB1)',
-              value: '+ ${bill.taxAmountIdr.toRupiah()}',
-            ),
-            _SummaryRow(
-              label: 'Biaya Layanan',
-              value: '+ ${bill.serviceAmountIdr.toRupiah()}',
-            ),
-            _SummaryRow(
-              label: 'Diskon / Promo',
-              value: '- ${bill.discountAmountIdr.toRupiah()}',
-            ),
-            const Divider(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Total Tagihan',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15.5,
-                  ),
-                ),
-                Text(
-                  bill.grandTotalIdr.toRupiah(),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                    color: AppTheme.primaryEmerald,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -336,14 +309,21 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
     final part = myParticipant.participant;
     final status = part.paymentStatus;
 
+    final Color tintBg = switch (status) {
+      PaymentStatus.paid => AppTheme.sageWash,
+      PaymentStatus.pending => AppTheme.butterWash,
+      PaymentStatus.unpaid || PaymentStatus.rejected => AppTheme.apricotWash,
+    };
+
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _statusColor(status).withValues(alpha: 0.5),
-          width: 1.5,
+        color: tintBg,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(28),
+          topRight: Radius.circular(14),
+          bottomLeft: Radius.circular(14),
+          bottomRight: Radius.circular(28),
         ),
       ),
       child: Column(
@@ -353,30 +333,43 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Bagian Tagihan Anda',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                'Bagian Kamu',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  color: AppTheme.darkSlate,
+                ),
               ),
               _StatusBadge(status: status),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             part.totalDueIdr.toRupiah(),
             style: const TextStyle(
-              fontSize: 24,
+              fontSize: 28,
               fontWeight: FontWeight.w900,
+              letterSpacing: -0.8,
               color: AppTheme.darkSlate,
             ),
           ),
+          const SizedBox(height: 4),
           Text(
-            'Rincian: Pesanan ${part.itemsSubtotalIdr.toRupiah()} + Pajak ${part.taxShareIdr.toRupiah()} + Layanan ${part.serviceShareIdr.toRupiah()} - Diskon ${part.discountShareIdr.toRupiah()}',
-            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            'Pesanan ${part.itemsSubtotalIdr.toRupiah()} + Pajak ${part.taxShareIdr.toRupiah()} + Layanan ${part.serviceShareIdr.toRupiah()} - Diskon ${part.discountShareIdr.toRupiah()}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppTheme.mutedInk,
+              height: 1.4,
+            ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           switch (status) {
             PaymentStatus.unpaid => SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.terracotta,
+                  ),
                   onPressed: () => _showPaymentConfirmationDialog(
                     context,
                     detail: detail,
@@ -384,55 +377,41 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                     amountIdr: part.totalDueIdr,
                   ),
                   icon: const Icon(Icons.payments_rounded),
-                  label: const Text('Konfirmasi Sudah Bayar'),
+                  label: const Text('Sudah Transfer? Konfirmasi'),
                 ),
               ),
-            PaymentStatus.pending => Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.hourglass_top_rounded,
-                      color: Color(0xFFD97706),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Menunggu verifikasi penerimaan dana dari ${detail.creator.fullName}.',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF92400E),
-                        ),
+            PaymentStatus.pending => Row(
+                children: [
+                  const Icon(
+                    Icons.hourglass_top_rounded,
+                    color: AppTheme.honeyAmber,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Menunggu ${detail.creator.fullName} mengecek transferanmu.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF7A4F09),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             PaymentStatus.rejected => Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      'Konfirmasi pembayaran sebelumnya belum dapat diverifikasi. Silakan periksa kembali bukti transfer Anda dan kirim konfirmasi ulang.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.statusRejected,
-                      ),
+                  Text(
+                    'Konfirmasi pembayaran sebelumnya ditolak ${detail.creator.fullName}. Cek bukti transfer lalu kirim ulang ya.',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.statusRejected,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
@@ -443,7 +422,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                             billId: bill.billId,
                             debtorUid: part.debtorUid,
                           ),
-                          child: const Text('Reset Status'),
+                          child: const Text('Reset'),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -462,32 +441,25 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                   ),
                 ],
               ),
-            PaymentStatus.paid => Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.check_circle_rounded,
-                      color: AppTheme.statusPaid,
-                    ),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Pembayaran Anda telah diverifikasi lunas.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF065F46),
-                        ),
+            PaymentStatus.paid => Row(
+                children: [
+                  const Icon(
+                    Icons.verified_rounded,
+                    color: AppTheme.statusPaid,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Lunas! Sudah diverifikasi oleh ${detail.creator.fullName}.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.primaryEmerald,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
           },
         ],
@@ -501,12 +473,8 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
     required String debtorUid,
     required double amountIdr,
   }) {
-    String selectedMethod = 'Transfer Bank / QRIS';
-    final methods = [
-      'Transfer Bank / QRIS',
-      'GoPay / OVO / Dana',
-      'Tunai (Cash)',
-    ];
+    String selectedMethod = 'Transfer Bank';
+    final methods = ['Transfer Bank', 'QRIS', 'GoPay / OVO / DANA', 'Tunai'];
 
     showDialog<void>(
       context: context,
@@ -518,50 +486,27 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Nominal dibayarkan ke ${detail.creator.fullName}:',
-                style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                amountIdr.toRupiah(),
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.primaryEmerald,
-                ),
+                'Pastikan kamu sudah membayar ${amountIdr.toRupiah()} kepada ${detail.creator.fullName}.',
+                style: const TextStyle(fontSize: 13, color: AppTheme.mutedInk),
               ),
               const SizedBox(height: 14),
               const Text(
                 'Metode Pembayaran:',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
               const SizedBox(height: 8),
-              ...methods.map(
-                (m) {
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: methods.map((m) {
                   final isSelected = selectedMethod == m;
-                  return ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      isSelected
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_off_rounded,
-                      color: isSelected
-                          ? AppTheme.primaryEmerald
-                          : const Color(0xFF94A3B8),
-                      size: 20,
-                    ),
-                    title: Text(
-                      m,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                    onTap: () => setDialogState(() => selectedMethod = m),
+                  return ChoiceChip(
+                    label: Text(m, style: const TextStyle(fontSize: 12)),
+                    selected: isSelected,
+                    selectedColor: AppTheme.sageWash,
+                    onSelected: (_) => setDialogState(() => selectedMethod = m),
                   );
-                },
+                }).toList(),
               ),
             ],
           ),
@@ -597,47 +542,72 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
         .toList();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F3FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFDDD6FE)),
+        color: pendingClaims.isEmpty ? AppTheme.sageWash : AppTheme.butterWash,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(14),
+          topRight: Radius.circular(28),
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(14),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.verified_user_rounded, color: Color(0xFF6D28D9)),
-              SizedBox(width: 8),
+              OrganicPebbleBadge(
+                size: 40,
+                color: AppTheme.paperWhite,
+                child: Icon(
+                  pendingClaims.isEmpty
+                      ? Icons.verified_user_rounded
+                      : Icons.mark_chat_unread_rounded,
+                  size: 20,
+                  color: pendingClaims.isEmpty
+                      ? AppTheme.primaryEmerald
+                      : AppTheme.honeyAmber,
+                ),
+              ),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  'Kelola Pelunasan Tagihan',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: Color(0xFF4C1D95),
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      pendingClaims.isEmpty
+                          ? 'Kamu Penalang Tagihan Ini'
+                          : '${pendingClaims.length} Konfirmasi Menunggu Dicek',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14.5,
+                        color: AppTheme.darkSlate,
+                      ),
+                    ),
+                    Text(
+                      pendingClaims.isEmpty
+                          ? 'Kamu bisa kirim pengingat ramah ke teman yang belum lunas di bawah.'
+                          : 'Periksa transfer masuk lalu verifikasi pelunasannya.',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.mutedInk,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            pendingClaims.isEmpty
-                ? 'Belum ada konfirmasi pembayaran baru yang menunggu verifikasi. Anda dapat mengirimkan pengingat pada peserta yang belum membayar di bawah.'
-                : 'Terdapat ${pendingClaims.length} konfirmasi pembayaran yang menunggu verifikasi Anda:',
-            style: const TextStyle(fontSize: 12.5, color: Color(0xFF5B21B6)),
-          ),
           if (pendingClaims.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             ...pendingClaims.map((claim) {
               return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppTheme.paperWhite,
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
                   children: [
@@ -649,15 +619,15 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                             claim.user.fullName,
                             style: const TextStyle(
                               fontWeight: FontWeight.w800,
-                              fontSize: 14,
+                              fontSize: 13.5,
                             ),
                           ),
                           Text(
-                            'Nominal: ${claim.participant.totalDueIdr.toRupiah()}',
+                            claim.participant.totalDueIdr.toRupiah(),
                             style: const TextStyle(
-                              fontSize: 12.5,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w900,
                               color: AppTheme.primaryEmerald,
-                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -666,6 +636,10 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                     OutlinedButton(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.statusRejected,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                       ),
                       onPressed: () => _settlementCubit.verifyOrReject(
                         groupId: widget.groupId,
@@ -678,6 +652,12 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                      ),
                       onPressed: () => _settlementCubit.verifyOrReject(
                         groupId: widget.groupId,
                         billId: detail.bill.billId,
@@ -685,7 +665,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                         debtorUid: claim.user.uid,
                         isApproved: true,
                       ),
-                      child: const Text('Verifikasi Lunas'),
+                      child: const Text('Lunas'),
                     ),
                   ],
                 ),
@@ -697,84 +677,85 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
     );
   }
 
-  Widget _buildAllParticipantsStatusCard(
+  Widget _buildParticipantsLedger(
     BuildContext context, {
     required RichBillDetail detail,
     required bool isBillCreator,
     required String currentUid,
   }) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Status Pembayaran Peserta',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                ),
-                Text(
-                  '${detail.paidCount}/${detail.participants.length} Lunas',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12.5,
-                    color: AppTheme.primaryEmerald,
-                  ),
-                ),
-              ],
+            const Text(
+              'Daftar Patungan',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 17,
+                letterSpacing: -0.3,
+                color: AppTheme.darkSlate,
+              ),
             ),
-            const Divider(height: 22),
-            ...detail.participants.map((item) {
-              final part = item.participant;
-              final status = part.paymentStatus;
-              final isCreatorRow = item.user.uid == detail.bill.creatorUid;
+            Text(
+              '${detail.paidCount}/${detail.participants.length} sudah beres',
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12.5,
+                color: AppTheme.primaryEmerald,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...List.generate(detail.participants.length, (index) {
+          final item = detail.participants[index];
+          final part = item.participant;
+          final status = part.paymentStatus;
+          final isCreatorRow = item.user.uid == detail.bill.creatorUid;
+          final pal = PatunginPalette.forKey(item.user.uid);
+          final isLast = index == detail.participants.length - 1;
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         CircleAvatar(
-                          radius: 17,
-                          backgroundColor:
-                              AppTheme.primaryEmerald.withValues(alpha: 0.14),
+                          radius: 20,
+                          backgroundColor: pal.bg,
                           child: Text(
                             item.user.initials,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: AppTheme.primaryEmerald,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: pal.fg,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${item.user.fullName}${isCreatorRow ? " (Penalang)" : ""}',
+                                '${item.user.fullName}${isCreatorRow ? " · Penalang" : ""}',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.w800,
-                                  fontSize: 13.5,
+                                  fontSize: 14,
+                                  color: AppTheme.darkSlate,
                                 ),
                               ),
                               Text(
-                                'Bagian: ${part.totalDueIdr.toRupiah()}',
+                                part.totalDueIdr.toRupiah(),
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14.5,
                                   color: AppTheme.primaryEmerald,
                                 ),
                               ),
@@ -785,140 +766,178 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      'Pesanan: ${item.assignedItems.map((e) => e.item.itemName).join(", ")}\n'
-                      'Subtotal ${part.itemsSubtotalIdr.toRupiah()} · +Pajak ${part.taxShareIdr.toRupiah()} · +Layanan ${part.serviceShareIdr.toRupiah()} · -Diskon ${part.discountShareIdr.toRupiah()}',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                    if (isBillCreator && !isCreatorRow) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (status == PaymentStatus.unpaid ||
-                              status == PaymentStatus.rejected)
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                              ),
-                              onPressed: () =>
-                                  _settlementCubit.sendReminderNudge(
-                                groupId: widget.groupId,
-                                billId: detail.bill.billId,
-                                requesterUid: currentUid,
-                                targetDebtorUid: item.user.uid,
-                              ),
-                              icon: const Icon(
-                                Icons.notifications_active_outlined,
-                                size: 16,
-                              ),
-                              label: const Text(
-                                'Kirim Pengingat',
-                                style: TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          if (status == PaymentStatus.pending) ...[
-                            OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.statusRejected,
-                              ),
-                              onPressed: () =>
-                                  _settlementCubit.verifyOrReject(
-                                groupId: widget.groupId,
-                                billId: detail.bill.billId,
-                                requesterUid: currentUid,
-                                debtorUid: item.user.uid,
-                                isApproved: false,
-                              ),
-                              child: const Text('Tolak'),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () =>
-                                  _settlementCubit.verifyOrReject(
-                                groupId: widget.groupId,
-                                billId: detail.bill.billId,
-                                requesterUid: currentUid,
-                                debtorUid: item.user.uid,
-                                isApproved: true,
-                              ),
-                              child: const Text('Terima Lunas'),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReceiptItemsBreakdownCard(RichBillDetail detail) {
-    final bill = detail.bill;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Daftar Pesanan Struk',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-            ),
-            const Divider(height: 20),
-            ...detail.items.map((item) {
-              final assignees =
-                  detail.assignmentsByItem[item.itemId] ?? const [];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
+                    Padding(
+                      padding: const EdgeInsets.only(left: 52),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${item.qty}x ${item.itemName}',
+                            item.assignedItems
+                                .map((e) => e.item.itemName)
+                                .join(' · '),
                             style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13.5,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.darkSlate,
                             ),
                           ),
+                          const SizedBox(height: 2),
                           Text(
-                            'Dibagi ${assignees.length} orang · @ ${item.unitPrice.toCurrency(bill.currencyCode)}',
+                            'Subtotal ${part.itemsSubtotalIdr.toRupiah()} · +Pajak ${part.taxShareIdr.toRupiah()} · +Layanan ${part.serviceShareIdr.toRupiah()} · -Diskon ${part.discountShareIdr.toRupiah()}',
                             style: const TextStyle(
                               fontSize: 11.5,
-                              color: Color(0xFF64748B),
+                              color: AppTheme.mutedInk,
                             ),
                           ),
+                          if (isBillCreator && !isCreatorRow) ...[
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                if (status == PaymentStatus.unpaid ||
+                                    status == PaymentStatus.rejected)
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 7,
+                                      ),
+                                    ),
+                                    onPressed: () =>
+                                        _settlementCubit.sendReminderNudge(
+                                      groupId: widget.groupId,
+                                      billId: detail.bill.billId,
+                                      requesterUid: currentUid,
+                                      targetDebtorUid: item.user.uid,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.notifications_active_outlined,
+                                      size: 16,
+                                    ),
+                                    label: const Text(
+                                      'Ingatkan Ramah',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                if (status == PaymentStatus.pending) ...[
+                                  OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppTheme.statusRejected,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 7,
+                                      ),
+                                    ),
+                                    onPressed: () =>
+                                        _settlementCubit.verifyOrReject(
+                                      groupId: widget.groupId,
+                                      billId: detail.bill.billId,
+                                      requesterUid: currentUid,
+                                      debtorUid: item.user.uid,
+                                      isApproved: false,
+                                    ),
+                                    child: const Text('Tolak'),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 7,
+                                      ),
+                                    ),
+                                    onPressed: () =>
+                                        _settlementCubit.verifyOrReject(
+                                      groupId: widget.groupId,
+                                      billId: detail.bill.billId,
+                                      requesterUid: currentUid,
+                                      debtorUid: item.user.uid,
+                                      isApproved: true,
+                                    ),
+                                    child: const Text('Terima Lunas'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
                         ],
-                      ),
-                    ),
-                    Text(
-                      item.priceIdr.toRupiah(),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13.5,
                       ),
                     ),
                   ],
                 ),
-              );
-            }),
-          ],
-        ),
+              ),
+              if (!isLast) const DashedDivider(),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildReceiptItemsSlip(RichBillDetail detail) {
+    final bill = detail.bill;
+    return ScallopedReceiptSurface(
+      topEdge: false,
+      bottomEdge: true,
+      color: AppTheme.warmSand,
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'CATATAN ITEM PESANAN',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              letterSpacing: 1.0,
+              color: AppTheme.mutedInk,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const DashedDivider(),
+          const SizedBox(height: 12),
+          ...detail.items.map((item) {
+            final assignees = detail.assignmentsByItem[item.itemId] ?? const [];
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${item.qty}x ${item.itemName}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13.5,
+                            color: AppTheme.darkSlate,
+                          ),
+                        ),
+                        Text(
+                          'Dibagi ${assignees.length} orang · @ ${item.unitPrice.toCurrency(bill.currencyCode)}',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: AppTheme.mutedInk,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    item.priceIdr.toRupiah(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                      color: AppTheme.darkSlate,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -936,10 +955,7 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
           );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Tagihan berhasil dihapus.'),
-            behavior: SnackBarBehavior.floating,
-          ),
+          const SnackBar(content: Text('Tagihan berhasil dihapus.')),
         );
         context.pop();
       }
@@ -949,19 +965,11 @@ class _BillDetailScreenState extends State<BillDetailScreen> {
           SnackBar(
             content: Text(e.message),
             backgroundColor: AppTheme.statusRejected,
-            behavior: SnackBarBehavior.floating,
           ),
         );
       }
     }
   }
-
-  Color _statusColor(PaymentStatus status) => switch (status) {
-        PaymentStatus.unpaid => AppTheme.statusUnpaid,
-        PaymentStatus.pending => AppTheme.statusPending,
-        PaymentStatus.paid => AppTheme.statusPaid,
-        PaymentStatus.rejected => AppTheme.statusRejected,
-      };
 }
 
 class _StatusBadge extends StatelessWidget {
@@ -972,21 +980,21 @@ class _StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color color = switch (status) {
       PaymentStatus.unpaid => AppTheme.statusUnpaid,
-      PaymentStatus.pending => const Color(0xFFD97706),
+      PaymentStatus.pending => AppTheme.honeyAmber,
       PaymentStatus.paid => AppTheme.statusPaid,
       PaymentStatus.rejected => AppTheme.statusRejected,
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        status.shortLabel.toUpperCase(),
+        status.shortLabel,
         style: TextStyle(
-          fontSize: 11,
+          fontSize: 11.5,
           fontWeight: FontWeight.w800,
           color: color,
         ),
@@ -1004,17 +1012,21 @@ class _SummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF475569)),
+            style: const TextStyle(fontSize: 13, color: AppTheme.mutedInk),
           ),
           Text(
             value,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.darkSlate,
+            ),
           ),
         ],
       ),

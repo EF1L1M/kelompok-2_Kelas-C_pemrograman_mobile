@@ -24,6 +24,11 @@ class AuthRepository {
   String _activeFcmToken = 'fcm_token_unregistered';
   bool _hasSeenOnboarding = false;
 
+  // Menjaga nama lengkap saat proses registrasi sedang berjalan agar listener
+  // authStateChanges tidak sempat menulis fallback prefix email sebelum
+  // updateDisplayName() & Firestore set() selesai (mencegah race condition).
+  String? _pendingRegistrationName;
+
   AuthRepository({
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
@@ -104,6 +109,7 @@ class AuthRepository {
     final normalizedEmail = email.trim().toLowerCase();
     final trimmedName = fullName.trim();
 
+    _pendingRegistrationName = trimmedName;
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: normalizedEmail,
@@ -137,6 +143,8 @@ class AuthRepository {
       throw AppAuthException.fromFirebaseCode(e.code);
     } on FirebaseException catch (e) {
       throw AppAuthException.fromFirebaseCode(e.code);
+    } finally {
+      _pendingRegistrationName = null;
     }
   }
 
@@ -151,6 +159,17 @@ class AuthRepository {
 
   /// Ambil profil pengguna dari koleksi `users/{uid}` atau buat jika belum ada
   Future<AppUser> _fetchOrCreateUserProfile(User fbUser) async {
+    final pendingName = _pendingRegistrationName;
+    if (pendingName != null && pendingName.isNotEmpty) {
+      return AppUser(
+        uid: fbUser.uid,
+        fullName: pendingName,
+        email: (fbUser.email ?? '').toLowerCase(),
+        photoUrl: fbUser.photoURL ?? '',
+        createdAt: fbUser.metadata.creationTime ?? DateTime.now(),
+      );
+    }
+
     final docRef = _firestore.collection('users').doc(fbUser.uid);
     try {
       final snapshot = await docRef.get();

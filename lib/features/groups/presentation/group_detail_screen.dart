@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/exceptions/auth_exception.dart';
 import '../../../core/extensions/format_extensions.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/patungin_patterns.dart';
 import '../../../models/erd_models.dart';
 import '../../../repositories/bill_settlement_repository.dart';
 import '../../../repositories/group_repository.dart';
@@ -40,28 +41,34 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
       builder: (context, groupSnap) {
         if (groupSnap.hasError) {
           return Scaffold(
+            backgroundColor: AppTheme.warmCream,
             appBar: AppBar(title: const Text('Akses Grup Ditolak')),
             body: Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(28),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.lock_person_rounded,
-                      size: 64,
-                      color: AppTheme.statusRejected,
+                    const OrganicPebbleBadge(
+                      size: 86,
+                      color: AppTheme.apricotWash,
+                      child: Icon(
+                        Icons.lock_person_rounded,
+                        size: 42,
+                        color: AppTheme.statusRejected,
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     Text(
-                      'Anda tidak memiliki akses ke grup ini atau terjadi kesalahan (${groupSnap.error}).',
+                      'Kamu belum terdaftar di grup ini atau terjadi kesalahan (${groupSnap.error}).',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
+                        color: AppTheme.darkSlate,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
                     ElevatedButton(
                       onPressed: () => context.go('/home'),
                       child: const Text('Kembali ke Beranda'),
@@ -83,12 +90,13 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
         final group = groupSnap.data;
         if (group == null) {
           return Scaffold(
+            backgroundColor: AppTheme.warmCream,
             appBar: AppBar(title: const Text('Grup Tidak Ditemukan')),
             body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Grup tidak ditemukan atau telah dihapus.'),
+                  const Text('Grup tidak ditemukan atau sudah dihapus.'),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: () => context.go('/home'),
@@ -100,83 +108,27 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           );
         }
 
+        final groupPalette = PatunginPalette.forKey(group.groupId);
+
         return StreamBuilder<List<GroupMemberProfile>>(
           stream: groupRepo.watchGroupMembersWithProfiles(widget.groupId),
           builder: (context, membersSnap) {
             final members = membersSnap.data ?? const [];
-            final myProfile = members
-                .where((m) => m.user.uid == currentUser.uid)
-                .firstOrNull;
-            final bool isAdmin = myProfile?.membership.role == GroupRole.admin ||
-                group.adminUid == currentUser.uid;
+            final myProfile =
+                members.where((m) => m.user.uid == currentUser.uid).firstOrNull;
+            final bool isAdmin =
+                myProfile?.membership.role == GroupRole.admin ||
+                    group.adminUid == currentUser.uid;
 
             return Scaffold(
-              appBar: AppBar(
-                title: Text(group.groupName),
-                actions: [
-                  IconButton(
-                    tooltip: 'Anggota & Kode Undangan',
-                    onPressed: () => _showMembersBottomSheet(
-                      context,
-                      group: group,
-                      members: members,
-                      isAdmin: isAdmin,
-                      currentUid: currentUser.uid,
-                    ),
-                    icon: const Icon(Icons.people_alt_outlined),
-                  ),
-                  if (isAdmin)
-                    PopupMenuButton<String>(
-                      tooltip: 'Pengaturan Grup',
-                      onSelected: (value) {
-                        if (value == 'edit') {
-                          _showEditGroupDialog(context, group, currentUser.uid);
-                        } else if (value == 'delete') {
-                          _showDeleteGroupConfirmation(
-                            context,
-                            group,
-                            currentUser.uid,
-                          );
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'edit',
-                          child: ListTile(
-                            leading: Icon(Icons.edit_outlined),
-                            title: Text('Ubah Informasi Grup'),
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: ListTile(
-                            leading: Icon(
-                              Icons.delete_forever_rounded,
-                              color: AppTheme.statusRejected,
-                            ),
-                            title: Text(
-                              'Hapus Grup',
-                              style: TextStyle(color: AppTheme.statusRejected),
-                            ),
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
+              backgroundColor: AppTheme.warmCream,
               floatingActionButton: FloatingActionButton.extended(
                 onPressed: () =>
                     context.push('/groups/${widget.groupId}/create-bill'),
-                backgroundColor: AppTheme.primaryEmerald,
-                foregroundColor: Colors.white,
-                icon: const Icon(Icons.add_card_rounded),
+                icon: const Icon(Icons.add_rounded),
                 label: const Text(
-                  'Buat Tagihan Baru',
-                  style: TextStyle(fontWeight: FontWeight.w700),
+                  'Catat Tagihan',
+                  style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
               body: StreamBuilder<List<BillModel>>(
@@ -199,375 +151,423 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     bills: allBills,
                     groupIdFilter: widget.groupId,
                   );
-          final totalGroupSpendingIdr = allBills.fold<double>(
-            0.0,
-            (sum, b) => sum + b.grandTotalIdr,
-          );
+                  final totalGroupSpendingIdr = allBills.fold<double>(
+                    0.0,
+                    (acc, b) => acc + b.grandTotalIdr,
+                  );
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-            children: [
-              // 1. Kartu Header Grup, Statistik Pengeluaran & Saldo Grup
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isAdmin
-                                ? AppTheme.primaryEmerald.withValues(alpha: 0.12)
-                                : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            isAdmin ? 'Peran: Admin Grup' : 'Peran: Anggota',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                              color: isAdmin
-                                  ? AppTheme.primaryEmerald
-                                  : const Color(0xFF475569),
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        InkWell(
-                          onTap: () {
-                            Clipboard.setData(
-                              ClipboardData(text: group.inviteCode),
-                            );
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Kode undangan ${group.inviteCode} disalin ke papan klip',
-                                ),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          },
+                  return CustomScrollView(
+                    slivers: [
+                      // 1. Header Gelombang Organik dengan Identitas Warna Grup
+                      SliverToBoxAdapter(
+                        child: ClipPath(
+                          clipper: const BottomWaveClipper(waveDepth: 26),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE0F2FE),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.copy_rounded,
-                                  size: 13,
-                                  color: Color(0xFF0369A1),
+                            color: groupPalette.bg,
+                            child: CustomPaint(
+                              painter: OrganicCanvasPainter(
+                                blobColor:
+                                    groupPalette.fg.withValues(alpha: 0.08),
+                                dotColor:
+                                    groupPalette.fg.withValues(alpha: 0.11),
+                              ),
+                              child: Padding(
+                                padding: EdgeInsets.fromLTRB(
+                                  18,
+                                  MediaQuery.of(context).padding.top + 10,
+                                  18,
+                                  42,
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Kode: ${group.inviteCode}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0369A1),
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: AppTheme.paperWhite
+                                                .withValues(alpha: 0.8),
+                                            foregroundColor: AppTheme.darkSlate,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.arrow_back_rounded,
+                                          ),
+                                          onPressed: () => context.pop(),
+                                        ),
+                                        const Spacer(),
+                                        DashedCouponChip(
+                                          label: 'Kode: ${group.inviteCode}',
+                                          color: groupPalette.fg,
+                                          onTap: () {
+                                            Clipboard.setData(
+                                              ClipboardData(
+                                                text: group.inviteCode,
+                                              ),
+                                            );
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Kode ${group.inviteCode} disalin! Tinggal kirim ke teman.',
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                        if (isAdmin) ...[
+                                          const SizedBox(width: 6),
+                                          PopupMenuButton<String>(
+                                            tooltip: 'Pengaturan Grup',
+                                            icon: CircleAvatar(
+                                              radius: 19,
+                                              backgroundColor: AppTheme
+                                                  .paperWhite
+                                                  .withValues(alpha: 0.8),
+                                              child: const Icon(
+                                                Icons.more_horiz_rounded,
+                                                color: AppTheme.darkSlate,
+                                              ),
+                                            ),
+                                            onSelected: (value) {
+                                              if (value == 'edit') {
+                                                _showEditGroupDialog(
+                                                  context,
+                                                  group,
+                                                  currentUser.uid,
+                                                );
+                                              } else if (value == 'delete') {
+                                                _showDeleteGroupConfirmation(
+                                                  context,
+                                                  group,
+                                                  currentUser.uid,
+                                                );
+                                              }
+                                            },
+                                            itemBuilder: (context) => [
+                                              const PopupMenuItem(
+                                                value: 'edit',
+                                                child: ListTile(
+                                                  leading:
+                                                      Icon(Icons.edit_outlined),
+                                                  title: Text(
+                                                    'Ubah Info Grup',
+                                                  ),
+                                                  contentPadding:
+                                                      EdgeInsets.zero,
+                                                  dense: true,
+                                                ),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: 'delete',
+                                                child: ListTile(
+                                                  leading: Icon(
+                                                    Icons
+                                                        .delete_forever_rounded,
+                                                    color:
+                                                        AppTheme.statusRejected,
+                                                  ),
+                                                  title: Text(
+                                                    'Hapus Grup',
+                                                    style: TextStyle(
+                                                      color: AppTheme
+                                                          .statusRejected,
+                                                    ),
+                                                  ),
+                                                  contentPadding:
+                                                      EdgeInsets.zero,
+                                                  dense: true,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        OrganicPebbleBadge(
+                                          size: 54,
+                                          color: AppTheme.paperWhite,
+                                          variant: 1,
+                                          child: Icon(
+                                            Icons.groups_2_rounded,
+                                            size: 28,
+                                            color: groupPalette.fg,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                group.groupName,
+                                                style: const TextStyle(
+                                                  fontSize: 23,
+                                                  fontWeight: FontWeight.w900,
+                                                  letterSpacing: -0.6,
+                                                  color: AppTheme.darkSlate,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Text(
+                                                group.description.isEmpty
+                                                    ? 'Ruang patungan bareng lingkaranmu'
+                                                    : group.description,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  color: AppTheme.mutedInk,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    // Baris anggota (Overlapping Avatar Stack) + Role
+                                    InkWell(
+                                      borderRadius: BorderRadius.circular(24),
+                                      onTap: () => _showMembersBottomSheet(
+                                        context,
+                                        group: group,
+                                        members: members,
+                                        isAdmin: isAdmin,
+                                        currentUid: currentUser.uid,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          OverlappingAvatarStack(
+                                            labels: members
+                                                .map((m) => m.user.initials)
+                                                .toList(),
+                                            radius: 15,
+                                            borderColor: groupPalette.bg,
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Text(
+                                            '${members.length} anggota · Kelola',
+                                            style: TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: groupPalette.fg,
+                                            ),
+                                          ),
+                                          const Spacer(),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.paperWhite
+                                                  .withValues(alpha: 0.78),
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                            ),
+                                            child: Text(
+                                              isAdmin
+                                                  ? 'Admin Grup'
+                                                  : 'Anggota',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w800,
+                                                color: groupPalette.fg,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    // Strip Statistik Editorial Terbuka (tanpa kotak)
+                                    DashedDivider(
+                                      color: groupPalette.fg
+                                          .withValues(alpha: 0.25),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _EditorialStat(
+                                            label: 'Total Grup',
+                                            value: totalGroupSpendingIdr
+                                                .toRupiah(),
+                                            valueColor: AppTheme.darkSlate,
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 1,
+                                          height: 30,
+                                          color: groupPalette.fg
+                                              .withValues(alpha: 0.2),
+                                        ),
+                                        Expanded(
+                                          child: _EditorialStat(
+                                            label: 'Utang Kamu',
+                                            value: groupBalance.totalYouOweIdr
+                                                .toRupiah(),
+                                            valueColor: AppTheme.terracotta,
+                                            align: CrossAxisAlignment.center,
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 1,
+                                          height: 30,
+                                          color: groupPalette.fg
+                                              .withValues(alpha: 0.2),
+                                        ),
+                                        Expanded(
+                                          child: _EditorialStat(
+                                            label: 'Piutang',
+                                            value: groupBalance
+                                                .totalOwedToYouIdr
+                                                .toRupiah(),
+                                            valueColor: AppTheme.primaryEmerald,
+                                            align: CrossAxisAlignment.end,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    if (group.description.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        group.description,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF475569),
                         ),
                       ),
-                    ],
-                    const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Total Pengeluaran',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              Text(
-                                totalGroupSpendingIdr.toRupiah(),
-                                style: const TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.darkSlate,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              const Text(
-                                'Utang Anda',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              Text(
-                                groupBalance.totalYouOweIdr.toRupiah(),
-                                style: const TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.statusUnpaid,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              const Text(
-                                'Piutang Anda',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              Text(
-                                groupBalance.totalOwedToYouIdr.toRupiah(),
-                                style: const TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.primaryEmerald,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
 
-              // 2. Header & Filter Daftar Tagihan
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Daftar Tagihan (${filteredBills.length})',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: () => _showMembersBottomSheet(
-                      context,
-                      group: group,
-                      members: members,
-                      isAdmin: isAdmin,
-                      currentUid: currentUser.uid,
-                    ),
-                    icon: const Icon(Icons.group_outlined, size: 17),
-                    label: Text('${members.length} Anggota'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _FilterChipItem(
-                      label: 'Semua (${allBills.length})',
-                      selected: _statusFilter == 'all',
-                      onTap: () => setState(() => _statusFilter = 'all'),
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChipItem(
-                      label:
-                          'Belum Lunas (${allBills.where((b) => b.status == BillStatus.open).length})',
-                      selected: _statusFilter == 'open',
-                      onTap: () => setState(() => _statusFilter = 'open'),
-                    ),
-                    const SizedBox(width: 8),
-                    _FilterChipItem(
-                      label:
-                          'Lunas (${allBills.where((b) => b.status == BillStatus.settled).length})',
-                      selected: _statusFilter == 'settled',
-                      onTap: () => setState(() => _statusFilter = 'settled'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              if (filteredBills.isEmpty)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(28),
-                    child: Center(
-                      child: Text(
-                        allBills.isEmpty
-                            ? 'Belum ada tagihan di grup ini. Tekan tombol "Buat Tagihan Baru" di bawah untuk mulai mencatat pengeluaran.'
-                            : 'Tidak ada tagihan pada filter ini.',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFF64748B)),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                ...filteredBills.map((bill) {
-                  final isCreator = bill.creatorUid == currentUser.uid;
-                  final isSettled = bill.status == BillStatus.settled;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Card(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => context.push(
-                          '/groups/${widget.groupId}/bills/${bill.billId}',
-                        ),
+                      // 2. Filter Pil & Header Riwayat Tagihan
+                      SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.fromLTRB(18, 10, 18, 8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isSettled
-                                          ? AppTheme.statusPaid
-                                              .withValues(alpha: 0.14)
-                                          : AppTheme.statusPending
-                                              .withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      isSettled ? 'LUNAS' : 'BELUM LUNAS',
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: isSettled
-                                            ? AppTheme.statusPaid
-                                            : const Color(0xFFB45309),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isCreator
-                                          ? const Color(0xFFEDE9FE)
-                                          : const Color(0xFFF1F5F9),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      isCreator
-                                          ? 'Ditalangi Anda'
-                                          : 'Peserta Patungan',
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: isCreator
-                                            ? const Color(0xFF6D28D9)
-                                            : const Color(0xFF475569),
-                                      ),
-                                    ),
-                                  ),
-                                  const Spacer(),
                                   Text(
-                                    bill.createdAt.toIndoDate(),
+                                    'Jejak Tagihan (${filteredBills.length})',
                                     style: const TextStyle(
-                                      fontSize: 11.5,
-                                      color: Color(0xFF64748B),
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: -0.3,
+                                      color: AppTheme.darkSlate,
                                     ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 10),
-                              Text(
-                                bill.title,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      bill.currencyCode == 'IDR'
-                                          ? 'Mata Uang: Rupiah (IDR)'
-                                          : 'Kurs: 1 ${bill.currencyCode} = ${bill.exchangeRate.toRupiah()} (${bill.rateDate.toIndoDate()})',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF64748B),
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: [
+                                    _CapsuleFilterTab(
+                                      label: 'Semua (${allBills.length})',
+                                      selected: _statusFilter == 'all',
+                                      onTap: () =>
+                                          setState(() => _statusFilter = 'all'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _CapsuleFilterTab(
+                                      label:
+                                          'Belum Lunas (${allBills.where((b) => b.status == BillStatus.open).length})',
+                                      selected: _statusFilter == 'open',
+                                      onTap: () => setState(
+                                        () => _statusFilter = 'open',
                                       ),
                                     ),
-                                  ),
-                                  Text(
-                                    bill.grandTotalIdr.toRupiah(),
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.primaryEmerald,
+                                    const SizedBox(width: 8),
+                                    _CapsuleFilterTab(
+                                      label:
+                                          'Lunas (${allBills.where((b) => b.status == BillStatus.settled).length})',
+                                      selected: _statusFilter == 'settled',
+                                      onTap: () => setState(
+                                        () => _statusFilter = 'settled',
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                    ),
+
+                      // 3. Timeline Struk Tagihan (Pola Timeline + Struk, bukan kotak datar)
+                      if (filteredBills.isEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(28, 36, 28, 100),
+                            child: Column(
+                              children: [
+                                const OrganicPebbleBadge(
+                                  size: 76,
+                                  color: AppTheme.warmSand,
+                                  variant: 2,
+                                  child: Icon(
+                                    Icons.receipt_long_outlined,
+                                    size: 36,
+                                    color: AppTheme.mutedInk,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
+                                  allBills.isEmpty
+                                      ? 'Belum ada struk dicatat'
+                                      : 'Tidak ada tagihan di filter ini',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.darkSlate,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  allBills.isEmpty
+                                      ? 'Tekan tombol "Catat Tagihan" di kanan bawah setelah nongkrong atau belanja bareng.'
+                                      : 'Coba pilih tab filter lain untuk melihat riwayat tagihan grup.',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppTheme.mutedInk,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      else
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 18, 110),
+                          sliver: SliverList.builder(
+                            itemCount: filteredBills.length,
+                            itemBuilder: (context, index) {
+                              final bill = filteredBills[index];
+                              final isLast = index == filteredBills.length - 1;
+                              return _TimelineReceiptTile(
+                                bill: bill,
+                                isCreator: bill.creatorUid == currentUser.uid,
+                                isLast: isLast,
+                                onTap: () => context.push(
+                                  '/groups/${widget.groupId}/bills/${bill.billId}',
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
                   );
-                }),
-            ],
-          );
-        },
-      ),
-    );
+                },
+              ),
+            );
           },
         );
       },
@@ -587,33 +587,44 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          20 + MediaQuery.of(ctx).viewInsets.bottom,
+          22,
+          14,
+          22,
+          24 + MediaQuery.of(ctx).viewInsets.bottom,
         ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4.5,
+                  decoration: BoxDecoration(
+                    color: AppTheme.softBorder,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'Anggota Grup (${members.length})',
                     style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.4,
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: () {
+                  DashedCouponChip(
+                    label: group.inviteCode,
+                    color: AppTheme.primaryEmerald,
+                    onTap: () {
                       Clipboard.setData(ClipboardData(text: group.inviteCode));
                       Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -621,27 +632,24 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                           content: Text(
                             'Kode undangan ${group.inviteCode} berhasil disalin!',
                           ),
-                          behavior: SnackBarBehavior.floating,
                         ),
                       );
                     },
-                    icon: const Icon(Icons.copy_rounded, size: 16),
-                    label: Text('Salin Kode: ${group.inviteCode}'),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ...members.map((m) {
                 final canKick = isAdmin && m.user.uid != currentUid;
+                final pal = PatunginPalette.forKey(m.user.uid);
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
-                    backgroundColor:
-                        AppTheme.primaryEmerald.withValues(alpha: 0.15),
+                    backgroundColor: pal.bg,
                     child: Text(
                       m.user.initials,
-                      style: const TextStyle(
-                        color: AppTheme.primaryEmerald,
+                      style: TextStyle(
+                        color: pal.fg,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -650,7 +658,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                     m.user.fullName,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  subtitle: Text('${m.user.email} · ${m.membership.role.label}'),
+                  subtitle:
+                      Text('${m.user.email} · ${m.membership.role.label}'),
                   trailing: canKick
                       ? IconButton(
                           tooltip: 'Keluarkan dari grup',
@@ -672,7 +681,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                                   SnackBar(
                                     content: Text(e.message),
                                     backgroundColor: AppTheme.statusRejected,
-                                    behavior: SnackBarBehavior.floating,
                                   ),
                                 );
                               }
@@ -683,13 +691,15 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                 );
               }),
               if (isAdmin) ...[
-                const Divider(height: 24),
+                const SizedBox(height: 8),
+                const DashedDivider(),
+                const SizedBox(height: 14),
                 const Text(
-                  'Tambah Anggota via Email Terdaftar:',
+                  'Tambah Anggota via Email Terdaftar',
                   style: TextStyle(
                     fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.darkSlate,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -702,7 +712,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                         decoration: const InputDecoration(
                           hintText: 'email.teman@domain.com',
                           isDense: true,
-                          prefixIcon: Icon(Icons.email_outlined, size: 18),
+                          prefixIcon:
+                              Icon(Icons.alternate_email_rounded, size: 18),
                         ),
                       ),
                     ),
@@ -725,7 +736,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                                   '${addedUser.fullName} berhasil ditambahkan ke grup!',
                                 ),
                                 backgroundColor: AppTheme.primaryEmerald,
-                                behavior: SnackBarBehavior.floating,
                               ),
                             );
                           }
@@ -735,7 +745,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
                               SnackBar(
                                 content: Text(e.message),
                                 backgroundColor: AppTheme.statusRejected,
-                                behavior: SnackBarBehavior.floating,
                               ),
                             );
                           }
@@ -787,15 +796,42 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await context.read<GroupRepository>().updateGroupInfo(
-                    groupId: group.groupId,
-                    requesterUid: requesterUid,
-                    newName: nameCtrl.text,
-                    newDescription: descCtrl.text,
+              try {
+                await context.read<GroupRepository>().updateGroupInfo(
+                      groupId: group.groupId,
+                      requesterUid: requesterUid,
+                      newName: nameCtrl.text,
+                      newDescription: descCtrl.text,
+                    );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Informasi grup berhasil diperbarui.'),
+                      backgroundColor: AppTheme.primaryEmerald,
+                    ),
                   );
-              if (mounted) setState(() {});
+                }
+              } on AppAuthException catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.message),
+                      backgroundColor: AppTheme.statusRejected,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Gagal memperbarui grup: $e'),
+                      backgroundColor: AppTheme.statusRejected,
+                    ),
+                  );
+                }
+              }
             },
-            child: const Text('Simpan Perubahan'),
+            child: const Text('Simpan'),
           ),
         ],
       ),
@@ -810,9 +846,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Konfirmasi Hapus Grup'),
+        title: const Text('Hapus Grup Ini?'),
         content: Text(
-          'Apakah Anda yakin ingin menghapus grup "${group.groupName}" beserta seluruh riwayat tagihan di dalamnya?',
+          'Semua riwayat tagihan di "${group.groupName}" akan ikut terhapus permanen.',
         ),
         actions: [
           TextButton(
@@ -825,13 +861,33 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              await context.read<GroupRepository>().deleteGroup(
-                    groupId: group.groupId,
-                    requesterUid: requesterUid,
+              try {
+                await context.read<GroupRepository>().deleteGroup(
+                      groupId: group.groupId,
+                      requesterUid: requesterUid,
+                    );
+                if (context.mounted) context.go('/home');
+              } on AppAuthException catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.message),
+                      backgroundColor: AppTheme.statusRejected,
+                    ),
                   );
-              if (context.mounted) context.go('/home');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Gagal menghapus grup: $e'),
+                      backgroundColor: AppTheme.statusRejected,
+                    ),
+                  );
+                }
+              }
             },
-            child: const Text('Ya, Hapus Grup'),
+            child: const Text('Ya, Hapus'),
           ),
         ],
       ),
@@ -839,12 +895,58 @@ class _GroupDetailScreenState extends State<GroupDetailScreen> {
   }
 }
 
-class _FilterChipItem extends StatelessWidget {
+class _EditorialStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color valueColor;
+  final CrossAxisAlignment align;
+
+  const _EditorialStat({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+    this.align = CrossAxisAlignment.start,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: Column(
+        crossAxisAlignment: align,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.mutedInk,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w900,
+              color: valueColor,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CapsuleFilterTab extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _FilterChipItem({
+  const _CapsuleFilterTab({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -852,19 +954,192 @@ class _FilterChipItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: selected ? Colors.white : AppTheme.darkSlate,
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.darkSlate : AppTheme.paperWhite,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: selected ? AppTheme.darkSlate : AppTheme.softBorder,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            color: selected ? AppTheme.warmCream : AppTheme.mutedInk,
+          ),
         ),
       ),
-      selected: selected,
-      selectedColor: AppTheme.primaryEmerald,
-      backgroundColor: Colors.white,
-      onSelected: (_) => onTap(),
+    );
+  }
+}
+
+class _TimelineReceiptTile extends StatelessWidget {
+  final BillModel bill;
+  final bool isCreator;
+  final bool isLast;
+  final VoidCallback onTap;
+
+  const _TimelineReceiptTile({
+    required this.bill,
+    required this.isCreator,
+    required this.isLast,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isSettled = bill.status == BillStatus.settled;
+    final statusColor =
+        isSettled ? AppTheme.statusPaid : AppTheme.statusPending;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Jalur timeline vertikal di sisi kiri
+          SizedBox(
+            width: 26,
+            child: Column(
+              children: [
+                const SizedBox(height: 18),
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: statusColor, width: 2.5),
+                  ),
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      color: AppTheme.softBorder,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Permukaan struk mini bergerigi bawah (bukan kartu kotak seragam)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: GestureDetector(
+                onTap: onTap,
+                child: ScallopedReceiptSurface(
+                  topEdge: false,
+                  bottomEdge: true,
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            bill.createdAt.toIndoDate(),
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.mutedInk,
+                            ),
+                          ),
+                          const Spacer(),
+                          InkStampBadge(
+                            text: isSettled ? 'Lunas' : 'Berjalan',
+                            color: statusColor,
+                            angleRadians: isSettled ? -0.05 : 0.04,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        bill.title,
+                        style: const TextStyle(
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.3,
+                          color: AppTheme.darkSlate,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isCreator
+                                  ? AppTheme.lavenderWash
+                                  : AppTheme.warmSand,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Text(
+                              isCreator ? 'Kamu yang talangi' : 'Ikut patungan',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: isCreator
+                                    ? const Color(0xFF5B3FA8)
+                                    : AppTheme.mutedInk,
+                              ),
+                            ),
+                          ),
+                          if (bill.currencyCode != 'IDR') ...[
+                            const SizedBox(width: 6),
+                            Text(
+                              '· ${bill.currencyCode}',
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1F638C),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      const DashedDivider(),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${bill.participantSummaries.length} peserta patungan',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.mutedInk,
+                            ),
+                          ),
+                          Text(
+                            bill.grandTotalIdr.toRupiah(),
+                            style: const TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w900,
+                              color: AppTheme.primaryEmerald,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

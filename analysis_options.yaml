@@ -7,6 +7,7 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    - Tugas_D121241012/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

@@ -176,7 +176,7 @@ class GroupRepository {
         throw const AppAuthException(
           code: 'user-not-found',
           message:
-              'Pengguna dengan email tersebut belum terdaftar di Patungin. Minta teman Anda mendaftar terlebih dahulu atau bagikan kode undangan.',
+              'Pengguna dengan email tersebut belum terdaftar di BagiTigaKan. Minta teman Anda mendaftar terlebih dahulu atau bagikan kode undangan.',
         );
       }
 
@@ -408,6 +408,34 @@ class GroupRepository {
           code: 'invalid-action',
           message: 'Group Admin tidak dapat mengeluarkan dirinya sendiri.',
         );
+      }
+
+      // Cek apakah target masih memiliki tagihan aktif yang belum lunas di grup
+      final openBillsSnap = await _groupsCol
+          .doc(groupId)
+          .collection('bills')
+          .where('status', isEqualTo: BillStatus.open.name)
+          .get();
+
+      for (final billDoc in openBillsSnap.docs) {
+        final bill = BillModel.fromMap(billDoc.data(), docId: billDoc.id);
+        final isCreatorWithUnpaidOthers = bill.creatorUid == targetUserUid &&
+            bill.participantSummaries.values.any(
+              (p) =>
+                  p.debtorUid != targetUserUid &&
+                  p.paymentStatus != PaymentStatus.paid,
+            );
+        final targetSummary = bill.participantSummaries[targetUserUid];
+        final hasUnpaidDebt = targetSummary != null &&
+            targetSummary.paymentStatus != PaymentStatus.paid;
+
+        if (isCreatorWithUnpaidOthers || hasUnpaidDebt) {
+          throw AppAuthException(
+            code: 'member-has-unsettled-bills',
+            message:
+                'Anggota tidak dapat dikeluarkan karena masih memiliki tanggungan/piutang yang belum lunas pada tagihan "${bill.title}".',
+          );
+        }
       }
 
       final batch = _firestore.batch();

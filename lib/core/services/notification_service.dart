@@ -10,11 +10,13 @@ import 'package:flutter/foundation.dart';
 // ============================================================================
 
 class NotificationTapPayload {
+  final String notifId;
   final String billId;
   final String groupId;
   final String type;
 
   const NotificationTapPayload({
+    this.notifId = '',
     required this.billId,
     required this.groupId,
     required this.type,
@@ -69,6 +71,7 @@ class NotificationService {
   /// Menampilkan Push Notification lokal di perangkat (dipanggil saat pesan FCM
   /// foreground diterima atau saat trigger event tagihan baru / klaim / nudge / verifikasi)
   Future<void> showPushNotification({
+    String notifId = '',
     required String title,
     required String body,
     required String groupId,
@@ -80,6 +83,7 @@ class NotificationService {
     }
 
     final payload = NotificationTapPayload(
+      notifId: notifId,
       groupId: groupId,
       billId: billId,
       type: type,

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/firebase/firebase_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validator_mixin.dart';
+import '../../../core/widgets/patungin_patterns.dart';
 import '../cubit/auth_cubit.dart';
 import '../cubit/auth_state.dart';
 
@@ -52,8 +53,8 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Masukkan email yang terdaftar di Patungin untuk menerima tautan pengaturan ulang kata sandi.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+                'Masukkan email yang terdaftar di BagiTigaKan untuk menerima tautan pengaturan ulang kata sandi.',
+                style: TextStyle(fontSize: 13, color: AppTheme.mutedInk),
               ),
               const SizedBox(height: 14),
               TextFormField(
@@ -78,9 +79,8 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
               if (!(resetFormKey.currentState?.validate() ?? false)) return;
               final email = resetCtrl.text.trim();
               Navigator.pop(ctx);
-              final err = await context
-                  .read<AuthCubit>()
-                  .sendPasswordResetEmail(email);
+              final err =
+                  await context.read<AuthCubit>().sendPasswordResetEmail(email);
               if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -91,7 +91,6 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
                   backgroundColor: err != null
                       ? AppTheme.statusRejected
                       : AppTheme.primaryEmerald,
-                  behavior: SnackBarBehavior.floating,
                 ),
               );
             },
@@ -114,7 +113,6 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
               SnackBar(
                 content: Text(message),
                 backgroundColor: AppTheme.statusRejected,
-                behavior: SnackBarBehavior.floating,
               ),
             );
           default:
@@ -125,212 +123,205 @@ class _LoginScreenState extends State<LoginScreen> with FormValidatorMixin {
         final isLoading = state is AuthLoading;
 
         return Scaffold(
-          body: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
+          backgroundColor: AppTheme.warmCream,
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                // Header gelombang organik hangat — menggantikan kotak form kaku
+                OrganicWaveHeader(
+                  waveDepth: 34,
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    MediaQuery.of(context).padding.top + 28,
+                    24,
+                    54,
+                  ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 460),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryEmerald
-                                  .withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Icon(
-                              Icons.receipt_long_rounded,
-                              color: AppTheme.primaryEmerald,
-                              size: 32,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Patungin',
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppTheme.darkSlate,
-                                  ),
-                                ),
-                                Text(
-                                  'Kelola patungan grup & pelunasan tagihan dengan mudah',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 28),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(22),
-                          child: Form(
-                            key: _formKey,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                const Text(
-                                  'Masuk ke Akun Anda',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'Gunakan email dan kata sandi yang sudah terdaftar.',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                TextFormField(
-                                  controller: _emailController,
-                                  keyboardType: TextInputType.emailAddress,
-                                  textInputAction: TextInputAction.next,
-                                  autofillHints: const [AutofillHints.email],
-                                  validator: validateEmail,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Alamat Email',
-                                    hintText: 'contoh@email.com',
-                                    prefixIcon: Icon(Icons.email_outlined),
-                                  ),
-                                ),
-                                const SizedBox(height: 14),
-                                TextFormField(
-                                  controller: _passwordController,
-                                  obscureText: _obscurePassword,
-                                  textInputAction: TextInputAction.done,
-                                  autofillHints: const [AutofillHints.password],
-                                  onFieldSubmitted: (_) => _submitLogin(),
-                                  validator: validatePassword,
-                                  decoration: InputDecoration(
-                                    labelText: 'Kata Sandi',
-                                    prefixIcon: const Icon(Icons.lock_outline),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscurePassword
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                      ),
-                                      onPressed: () => setState(
-                                        () => _obscurePassword =
-                                            !_obscurePassword,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed: isLoading
-                                        ? null
-                                        : _showForgotPasswordDialog,
-                                    child: const Text('Lupa Kata Sandi?'),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                ElevatedButton.icon(
-                                  onPressed: isLoading ? null : _submitLogin,
-                                  icon: isLoading
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Icon(Icons.login_rounded),
-                                  label: Text(
-                                    isLoading ? 'Memproses...' : 'Masuk',
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text('Belum punya akun? '),
-                          TextButton(
-                            onPressed: isLoading
-                                ? null
-                                : () => context.go('/register'),
-                            child: const Text(
-                              'Daftar Sekarang',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                          const Text('·'),
-                          TextButton(
-                            onPressed: isLoading
-                                ? null
-                                : () => context.go('/onboarding'),
-                            child: const Text('Info Fitur'),
-                          ),
-                        ],
-                      ),
-                      if (FirebaseAppConfig.useEmulator) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: AppTheme.primaryEmerald
-                                  .withValues(alpha: 0.25),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                          Row(
                             children: [
-                              const Icon(
-                                Icons.dns_rounded,
-                                size: 15,
-                                color: AppTheme.primaryEmerald,
+                              const BagiTigaKanLogo(
+                                size: 46,
+                                showSubtleBorder: true,
                               ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  'Mode Firebase Emulator (${FirebaseAppConfig.emulatorHost}:${FirebaseAppConfig.authEmulatorPort})',
-                                  style: const TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF065F46),
-                                  ),
+                              const SizedBox(width: 12),
+                              const BagiTigaKanWordmark(
+                                fontSize: 22,
+                                onDark: true,
+                                showTagline: true,
+                              ),
+                              const Spacer(),
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  foregroundColor:
+                                      AppTheme.warmCream.withValues(alpha: 0.9),
                                 ),
+                                onPressed: isLoading
+                                    ? null
+                                    : () => context.go('/onboarding'),
+                                child: const Text('Info Fitur'),
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ],
+                          const SizedBox(height: 26),
+                          Text(
+                            '${timeBasedGreeting()}!',
+                            style: TextStyle(
+                              color:
+                                  AppTheme.butterWash.withValues(alpha: 0.95),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Masuk dan lanjut\npatungan bareng teman.',
+                            style: TextStyle(
+                              color: AppTheme.warmCream,
+                              fontSize: 27,
+                              height: 1.2,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.7,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
+
+                // Area formulir terbuka di atas kertas hangat (tanpa kurungan kotak)
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 14, 24, 32),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Email Terdaftar',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.darkSlate,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              textInputAction: TextInputAction.next,
+                              autofillHints: const [AutofillHints.email],
+                              validator: validateEmail,
+                              decoration: const InputDecoration(
+                                hintText: 'nama@email.com',
+                                prefixIcon: Icon(Icons.alternate_email_rounded),
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            const Text(
+                              'Kata Sandi',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.darkSlate,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextFormField(
+                              controller: _passwordController,
+                              obscureText: _obscurePassword,
+                              textInputAction: TextInputAction.done,
+                              autofillHints: const [AutofillHints.password],
+                              onFieldSubmitted: (_) => _submitLogin(),
+                              validator: validatePassword,
+                              decoration: InputDecoration(
+                                hintText: 'Masukkan kata sandi Anda',
+                                prefixIcon:
+                                    const Icon(Icons.lock_outline_rounded),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                  ),
+                                  onPressed: () => setState(
+                                    () => _obscurePassword = !_obscurePassword,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: TextButton(
+                                onPressed: isLoading
+                                    ? null
+                                    : _showForgotPasswordDialog,
+                                child: const Text('Lupa kata sandi?'),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ElevatedButton.icon(
+                              onPressed: isLoading ? null : _submitLogin,
+                              icon: isLoading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.arrow_forward_rounded),
+                              label: Text(
+                                isLoading
+                                    ? 'Sedang masuk...'
+                                    : 'Masuk Sekarang',
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            const DashedDivider(),
+                            const SizedBox(height: 18),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'Baru di BagiTigaKan? ',
+                                  style: TextStyle(color: AppTheme.mutedInk),
+                                ),
+                                TextButton(
+                                  onPressed: isLoading
+                                      ? null
+                                      : () => context.go('/register'),
+                                  child: const Text('Buat Akun Baru'),
+                                ),
+                              ],
+                            ),
+                            if (FirebaseAppConfig.useEmulator) ...[
+                              const SizedBox(height: 12),
+                              Center(
+                                child: DashedCouponChip(
+                                  icon: Icons.dns_outlined,
+                                  color: AppTheme.primaryEmerald,
+                                  label:
+                                      'Emulator · ${FirebaseAppConfig.emulatorHost}:${FirebaseAppConfig.authEmulatorPort}',
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );

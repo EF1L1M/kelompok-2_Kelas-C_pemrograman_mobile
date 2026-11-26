@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../core/exceptions/auth_exception.dart';
 import '../core/extensions/format_extensions.dart';
-import '../core/services/notification_service.dart';
 import '../models/erd_models.dart';
 
 // ============================================================================
@@ -192,8 +191,10 @@ class BillSettlementRepository {
 
     late StreamController<RichBillDetail?> controller;
     StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? billSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? itemsSub;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? partSub;
     DocumentSnapshot<Map<String, dynamic>>? latestBillSnap;
+    QuerySnapshot<Map<String, dynamic>>? latestItemsSnap;
     QuerySnapshot<Map<String, dynamic>>? latestPartSnap;
 
     Future<void> emitCombined() async {
@@ -206,8 +207,7 @@ class BillSettlementRepository {
       try {
         final bill = BillModel.fromMap(bSnap.data()!, docId: bSnap.id);
 
-        final itemsSnap = await billRef.collection('items').get();
-        final items = itemsSnap.docs
+        final items = (latestItemsSnap?.docs ?? const [])
             .map((d) => BillItemModel.fromMap(d.data(), docId: d.id))
             .toList();
 
@@ -299,21 +299,37 @@ class BillSettlementRepository {
       }
     }
 
+    void forwardError(Object err) {
+      if (!controller.isClosed) controller.addError(err);
+    }
+
     controller = StreamController<RichBillDetail?>(
       onListen: () {
-        billSub = billRef.snapshots().listen((snap) {
-          latestBillSnap = snap;
-          emitCombined();
-        });
-        partSub = billRef.collection('participants').snapshots().listen((snap) {
-          latestPartSnap = snap;
-          if (latestBillSnap != null) {
+        billSub = billRef.snapshots().listen(
+          (snap) {
+            latestBillSnap = snap;
             emitCombined();
-          }
-        });
+          },
+          onError: forwardError,
+        );
+        itemsSub = billRef.collection('items').snapshots().listen(
+          (snap) {
+            latestItemsSnap = snap;
+            if (latestBillSnap != null) emitCombined();
+          },
+          onError: forwardError,
+        );
+        partSub = billRef.collection('participants').snapshots().listen(
+          (snap) {
+            latestPartSnap = snap;
+            if (latestBillSnap != null) emitCombined();
+          },
+          onError: forwardError,
+        );
       },
       onCancel: () async {
         await billSub?.cancel();
+        await itemsSub?.cancel();
         await partSub?.cancel();
       },
     );
@@ -457,53 +473,74 @@ class BillSettlementRepository {
           .collection('bills')
           .doc(finalBill.billId);
 
-      // Jika mode edit, bersihkan item & participant lama terlebih dahulu
-      if (isEdit) {
-        final oldItems = await billRef.collection('items').get();
-        for (final oldItem in oldItems.docs) {
-          final oldAssigns =
-              await oldItem.reference.collection('assignments').get();
-          for (final a in oldAssigns.docs) {
-            await a.reference.delete();
-          }
-          await oldItem.reference.delete();
-        }
-        final oldParts = await billRef.collection('participants').get();
-        for (final p in oldParts.docs) {
-          await p.reference.delete();
-        }
-      }
-
       // Simpan dokumen bill terlebih dahulu agar rule isBillCreator(gid, bid) terpenuhi
       await billRef.set(finalBill.toMap());
 
-      final batch = _firestore.batch();
+      final newItemIds = items.map((e) => e.itemId).toSet();
+      final newParticipantUids = participants.map((e) => e.debtorUid).toSet();
+
+      // Tulis item, assignment, dan participant baru terlebih dahulu (hindari jendela kosong)
+      final writeBatch = _firestore.batch();
       for (final item in items) {
         final itemRef = billRef.collection('items').doc(item.itemId);
-        batch.set(itemRef, item.toMap());
+        writeBatch.set(itemRef, item.toMap());
         final itemAssigns = assignmentsByItem[item.itemId] ?? const [];
         for (final assign in itemAssigns) {
-          batch.set(
+          writeBatch.set(
             itemRef.collection('assignments').doc(assign.debtorUid),
             assign.toMap(),
           );
         }
       }
       for (final part in participants) {
-        batch.set(
+        writeBatch.set(
           billRef.collection('participants').doc(part.debtorUid),
           part.toMap(),
         );
       }
-      await batch.commit();
+      await writeBatch.commit();
 
-      // Kirim notifikasi ke seluruh debitur selain pembuat tagihan
+      // Jika mode edit, hapus hanya dokumen lama yang sudah tidak dipakai
+      if (isEdit) {
+        final existingItems = await billRef.collection('items').get();
+        for (final doc in existingItems.docs) {
+          final itemId = doc.id;
+          if (!newItemIds.contains(itemId)) {
+            final oldAssigns =
+                await doc.reference.collection('assignments').get();
+            for (final a in oldAssigns.docs) {
+              await a.reference.delete();
+            }
+            await doc.reference.delete();
+          } else {
+            final activeAssignUids = (assignmentsByItem[itemId] ?? const [])
+                .map((a) => a.debtorUid)
+                .toSet();
+            final oldAssigns =
+                await doc.reference.collection('assignments').get();
+            for (final a in oldAssigns.docs) {
+              if (!activeAssignUids.contains(a.id)) {
+                await a.reference.delete();
+              }
+            }
+          }
+        }
+        final existingParts = await billRef.collection('participants').get();
+        for (final p in existingParts.docs) {
+          if (!newParticipantUids.contains(p.id)) {
+            await p.reference.delete();
+          }
+        }
+      }
+
+      // Kirim notifikasi ke debitur yang belum berstatus paid selain pembuat tagihan
       final creatorDoc = await _usersCol.doc(finalBill.creatorUid).get();
       final creatorName =
           (creatorDoc.data()?['full_name'] as String?) ?? 'Penalang';
 
       for (final part in participants) {
-        if (part.debtorUid != finalBill.creatorUid) {
+        if (part.debtorUid != finalBill.creatorUid &&
+            part.paymentStatus != PaymentStatus.paid) {
           await _createAndDispatchNotification(
             receiverUid: part.debtorUid,
             senderUid: finalBill.creatorUid,
@@ -838,14 +875,5 @@ class BillSettlementRepository {
       createdAt: DateTime.now(),
     );
     await docRef.set(notif.toMap());
-
-    // Tampilkan umpan balik banner lokal juga saat aksi berhasil dikirim
-    await NotificationService.instance.showPushNotification(
-      title: 'Patungin · ${type.label}',
-      body: message,
-      groupId: groupId,
-      billId: billId,
-      type: type.code,
-    );
   }
 }

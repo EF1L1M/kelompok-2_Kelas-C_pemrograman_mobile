@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/extensions/format_extensions.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/patungin_patterns.dart';
 import '../../../models/erd_models.dart';
 import '../../../repositories/bill_settlement_repository.dart';
 import '../../auth/cubit/auth_cubit.dart';
@@ -20,13 +21,14 @@ class NotificationCenterScreen extends StatelessWidget {
     final repo = context.read<BillSettlementRepository>();
 
     return Scaffold(
+      backgroundColor: AppTheme.warmCream,
       appBar: AppBar(
-        title: const Text('Notifikasi'),
+        title: const Text('Kabar Patungan'),
         actions: [
           TextButton.icon(
             onPressed: () => repo.markAllNotificationsAsRead(currentUser.uid),
             icon: const Icon(Icons.done_all_rounded, size: 18),
-            label: const Text('Tandai Dibaca'),
+            label: const Text('Baca Semua'),
           ),
         ],
       ),
@@ -38,30 +40,37 @@ class NotificationCenterScreen extends StatelessWidget {
           if (list.isEmpty) {
             return const Center(
               child: Padding(
-                padding: EdgeInsets.all(28),
+                padding: EdgeInsets.all(32),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.notifications_none_rounded,
-                      size: 56,
-                      color: Color(0xFF94A3B8),
-                    ),
-                    SizedBox(height: 12),
-                    Text(
-                      'Belum Ada Notifikasi',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
+                    OrganicPebbleBadge(
+                      size: 88,
+                      color: AppTheme.warmSand,
+                      variant: 1,
+                      child: Icon(
+                        Icons.notifications_none_rounded,
+                        size: 42,
+                        color: AppTheme.mutedInk,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    SizedBox(height: 16),
                     Text(
-                      'Pemberitahuan tagihan baru, pengingat pembayaran, dan konfirmasi pelunasan akan muncul di sini.',
+                      'Masih Sepi di Sini',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        color: AppTheme.darkSlate,
+                      ),
+                    ),
+                    SizedBox(height: 6),
+                    Text(
+                      'Kabar tagihan baru, pengingat ramah dari teman, dan konfirmasi lunas akan muncul di lini masa ini.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF64748B),
+                        fontSize: 13.5,
+                        color: AppTheme.mutedInk,
+                        height: 1.5,
                       ),
                     ),
                   ],
@@ -71,70 +80,143 @@ class NotificationCenterScreen extends StatelessWidget {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(18, 12, 18, 36),
             itemCount: list.length,
             itemBuilder: (context, index) {
               final notif = list[index];
               final iconData = _iconForType(notif.type);
               final iconColor = _colorForType(notif.type);
+              final isLast = index == list.length - 1;
 
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Card(
-                  color:
-                      notif.isRead ? Colors.white : const Color(0xFFF0FDF4),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Jalur timeline vertikal dengan simpul bulat organik
+                    SizedBox(
+                      width: 44,
+                      child: Column(
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              OrganicPebbleBadge(
+                                size: 40,
+                                color: iconColor.withValues(alpha: 0.14),
+                                variant: index,
+                                child: Icon(
+                                  iconData,
+                                  color: iconColor,
+                                  size: 20,
+                                ),
+                              ),
+                              if (!notif.isRead)
+                                Positioned(
+                                  top: -2,
+                                  right: -2,
+                                  child: Container(
+                                    width: 11,
+                                    height: 11,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.terracotta,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppTheme.warmCream,
+                                        width: 2,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (!isLast)
+                            Expanded(
+                              child: Container(
+                                width: 1.8,
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                color: AppTheme.softBorder,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    leading: CircleAvatar(
-                      backgroundColor: iconColor.withValues(alpha: 0.14),
-                      child: Icon(iconData, color: iconColor, size: 20),
-                    ),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            notif.type.label,
-                            style: TextStyle(
-                              fontWeight: notif.isRead
-                                  ? FontWeight.w700
-                                  : FontWeight.w900,
-                              fontSize: 14,
+                    const SizedBox(width: 10),
+                    // Gelembung percakapan organik (bukan kotak kartu kaku)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: InkWell(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(6),
+                            topRight: Radius.circular(22),
+                            bottomLeft: Radius.circular(22),
+                            bottomRight: Radius.circular(22),
+                          ),
+                          onTap: () async {
+                            await repo.markNotificationAsRead(notif.notifId);
+                            if (context.mounted &&
+                                notif.groupId.isNotEmpty &&
+                                notif.billId.isNotEmpty) {
+                              context.push(
+                                '/groups/${notif.groupId}/bills/${notif.billId}',
+                              );
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
+                            decoration: BoxDecoration(
+                              color: notif.isRead
+                                  ? AppTheme.paperWhite
+                                  : AppTheme.sageWash.withValues(alpha: 0.65),
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(6),
+                                topRight: Radius.circular(22),
+                                bottomLeft: Radius.circular(22),
+                                bottomRight: Radius.circular(22),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        notif.type.label,
+                                        style: TextStyle(
+                                          fontWeight: notif.isRead
+                                              ? FontWeight.w700
+                                              : FontWeight.w900,
+                                          fontSize: 13.5,
+                                          color: AppTheme.darkSlate,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      notif.createdAt.toRelativeTime(),
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.mutedInk,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  notif.message,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF39423C),
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        Text(
-                          notif.createdAt.toRelativeTime(),
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                      ],
-                    ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        notif.message,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: Color(0xFF334155),
-                        ),
                       ),
                     ),
-                    onTap: () async {
-                      await repo.markNotificationAsRead(notif.notifId);
-                      if (context.mounted &&
-                          notif.groupId.isNotEmpty &&
-                          notif.billId.isNotEmpty) {
-                        context.push(
-                          '/groups/${notif.groupId}/bills/${notif.billId}',
-                        );
-                      }
-                    },
-                  ),
+                  ],
                 ),
               );
             },
@@ -153,9 +235,9 @@ class NotificationCenterScreen extends StatelessWidget {
       };
 
   Color _colorForType(NotifType type) => switch (type) {
-        NotifType.newBill => const Color(0xFF0284C7),
-        NotifType.pending => AppTheme.statusPending,
-        NotifType.reminder => const Color(0xFF7C3AED),
+        NotifType.newBill => const Color(0xFF1F638C),
+        NotifType.pending => AppTheme.honeyAmber,
+        NotifType.reminder => const Color(0xFF5B3FA8),
         NotifType.verified => AppTheme.statusPaid,
         NotifType.rejected => AppTheme.statusRejected,
       };

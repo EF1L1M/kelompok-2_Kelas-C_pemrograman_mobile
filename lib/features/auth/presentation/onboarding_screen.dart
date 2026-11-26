@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/patungin_patterns.dart';
 import '../cubit/auth_cubit.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -18,24 +19,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   static const List<Map<String, dynamic>> _slides = [
     {
       'icon': Icons.document_scanner_rounded,
-      'badge': 'Scan Struk & Multi-Mata Uang',
-      'title': 'Pindai Struk & Konversi Kurs Otomatis',
+      'badge': 'Scan Struk & Kurs Otomatis',
+      'title': 'Foto struknya,\nbiar kami bacakan.',
       'desc':
-          'Ekstrak rincian belanja langsung dari struk dan konversi tagihan mata uang asing (USD, SGD, EUR, JPY, MYR) ke Rupiah secara otomatis.',
+          'Ekstrak item pesanan langsung dari struk nongkrong atau liburan luar negeri, lalu konversi otomatis ke Rupiah tanpa hitung manual.',
+      'blobBg': AppTheme.sageWash,
+      'accent': AppTheme.primaryEmerald,
+      'pillA': 'USD → IDR',
+      'pillB': 'Smart OCR',
     },
     {
-      'icon': Icons.calculate_rounded,
-      'badge': 'Akurasi Tanpa Selisih',
-      'title': 'Pembagian Proporsional Otomatis',
+      'icon': Icons.pie_chart_outline_rounded,
+      'badge': 'Adil Tanpa Selisih Rp 0',
+      'title': 'Bagi sesuai porsi,\nbukan pukul rata.',
       'desc':
-          'Pilih anggota untuk setiap pesanan. Pajak restoran (PB1), biaya layanan, dan diskon dibagi secara adil dan proporsional tanpa selisih pembulatan.',
+          'Cukup tandai siapa pesan apa. Pajak restoran (PB1), biaya layanan, dan diskon promo otomatis terbagi proporsional tanpa selisih.',
+      'blobBg': AppTheme.apricotWash,
+      'accent': AppTheme.terracotta,
+      'pillA': 'PB1 10%',
+      'pillB': 'Selisih Rp 0',
     },
     {
-      'icon': Icons.notifications_active_rounded,
+      'icon': Icons.notifications_active_outlined,
       'badge': 'Pelunasan Real-Time',
-      'title': 'Pantau Pelunasan & Kirim Pengingat',
+      'title': 'Ingatkan teman\ntanpa rasa canggung.',
       'desc':
-          'Lacak siapa yang sudah membayar atau menunggu verifikasi secara langsung, serta kirim pengingat pembayaran ramah hanya dengan satu ketukan.',
+          'Pantau siapa yang sudah transfer atau menunggu verifikasi secara langsung, dan kirim pengingat ramah cukup dengan satu ketukan.',
+      'blobBg': AppTheme.butterWash,
+      'accent': AppTheme.honeyAmber,
+      'pillA': 'Lunas!',
+      'pillB': 'Nudge Ramah',
     },
   ];
 
@@ -46,21 +59,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final activeSlide = _slides[_currentPage];
+    final activeAccent = activeSlide['accent'] as Color;
+
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        actions: [
-          TextButton(
-            onPressed: _finishOnboarding,
-            child: const Text('Lewati'),
-          ),
-        ],
-      ),
+      backgroundColor: AppTheme.warmCream,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
           child: Column(
             children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      BagiTigaKanLogo(size: 36),
+                      SizedBox(width: 9),
+                      BagiTigaKanWordmark(fontSize: 18),
+                    ],
+                  ),
+                  TextButton(
+                    onPressed: _finishOnboarding,
+                    child: const Text('Lewati'),
+                  ),
+                ],
+              ),
               Expanded(
                 child: PageView.builder(
                   controller: _controller,
@@ -68,59 +92,124 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   onPageChanged: (idx) => setState(() => _currentPage = idx),
                   itemBuilder: (context, index) {
                     final slide = _slides[index];
+                    final Color blobBg = slide['blobBg'] as Color;
+                    final Color accent = slide['accent'] as Color;
+
                     return Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Container(
-                          width: 110,
-                          height: 110,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryEmerald.withValues(alpha: 0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            slide['icon'] as IconData,
-                            size: 54,
-                            color: AppTheme.primaryEmerald,
+                        // Ilustrasi organik berlapis (non-kotak)
+                        SizedBox(
+                          height: 220,
+                          width: 260,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Transform.rotate(
+                                angle: index.isEven ? -0.14 : 0.14,
+                                child: OrganicPebbleBadge(
+                                  size: 180,
+                                  color: blobBg,
+                                  variant: index,
+                                  child: const SizedBox.shrink(),
+                                ),
+                              ),
+                              Container(
+                                width: 126,
+                                height: 126,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.paperWhite,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: accent.withValues(alpha: 0.14),
+                                      blurRadius: 26,
+                                      offset: const Offset(0, 10),
+                                    ),
+                                  ],
+                                ),
+                                child: Icon(
+                                  slide['icon'] as IconData,
+                                  size: 56,
+                                  color: accent,
+                                ),
+                              ),
+                              Positioned(
+                                top: 20,
+                                right: 12,
+                                child: Transform.rotate(
+                                  angle: 0.08,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.paperWhite,
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: accent.withValues(alpha: 0.35),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      slide['pillA'] as String,
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: accent,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 18,
+                                left: 8,
+                                child: Transform.rotate(
+                                  angle: -0.07,
+                                  child: InkStampBadge(
+                                    text: slide['pillB'] as String,
+                                    color: accent,
+                                    angleRadians: 0,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            slide['badge'] as String,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.primaryEmerald,
-                            ),
+                        const SizedBox(height: 18),
+                        Text(
+                          (slide['badge'] as String).toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.1,
+                            color: accent,
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 10),
                         Text(
                           slide['title'] as String,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 27,
+                            height: 1.18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.7,
                             color: AppTheme.darkSlate,
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          slide['desc'] as String,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            color: Color(0xFF475569),
-                            height: 1.5,
+                        const SizedBox(height: 14),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            slide['desc'] as String,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14.5,
+                              color: AppTheme.mutedInk,
+                              height: 1.55,
+                            ),
                           ),
                         ),
                       ],
@@ -133,28 +222,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: List.generate(
                   _slides.length,
                   (i) => AnimatedContainer(
-                    duration: const Duration(milliseconds: 250),
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeOutCubic,
                     margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: _currentPage == i ? 28 : 8,
-                    height: 8,
+                    width: _currentPage == i ? 30 : 9,
+                    height: 9,
                     decoration: BoxDecoration(
                       color: _currentPage == i
-                          ? AppTheme.primaryEmerald
-                          : const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(4),
+                          ? activeAccent
+                          : const Color(0xFFD6CEC0),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: activeAccent,
+                  ),
                   onPressed: () {
                     if (_currentPage < _slides.length - 1) {
                       _controller.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
+                        duration: const Duration(milliseconds: 340),
+                        curve: Curves.easeOutCubic,
                       );
                     } else {
                       _finishOnboarding();
@@ -162,7 +255,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   },
                   child: Text(
                     _currentPage == _slides.length - 1
-                        ? 'Mulai Sekarang'
+                        ? 'Mulai Pakai BagiTigaKan'
                         : 'Lanjut',
                   ),
                 ),

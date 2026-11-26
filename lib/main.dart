@@ -15,7 +15,7 @@ import 'repositories/group_repository.dart';
 import 'repositories/open_source_api_repository.dart';
 
 // ============================================================================
-// ENTRY POINT APLIKASI PATUNGIN (SMART SPLIT-BILL & BUDGET)
+// ENTRY POINT APLIKASI BAGITIGAKAN (SMART SPLIT-BILL & BUDGET)
 // Mata Kuliah: Pemrograman Mobile (Dart & Flutter SDK)
 // Mengintegrasikan Firebase Auth & Cloud Firestore (Local Emulator Suite / Cloud),
 // BLoC/Cubit State Management, GoRouter Auth Guard, Open-Source API, dan Notifikasi.
@@ -92,9 +92,12 @@ class _SmartSplitBillAppState extends State<SmartSplitBillApp> {
 
     _router = AppRouter.createRouter(_authCubit);
 
-    // FR-06: Ketukan pada Push Notification langsung membuka halaman Bill Detail
+    // FR-06: Ketukan pada Push Notification menandai dibaca & membuka halaman Bill Detail
     _notifTapSub = NotificationService.instance.onNotificationTap.listen(
       (payload) {
+        if (payload.notifId.isNotEmpty) {
+          _settlementRepository.markNotificationAsRead(payload.notifId);
+        }
         if (payload.groupId.isNotEmpty && payload.billId.isNotEmpty) {
           _router.push('/groups/${payload.groupId}/bills/${payload.billId}');
         }
@@ -173,7 +176,7 @@ class _SmartSplitBillAppState extends State<SmartSplitBillApp> {
           BlocProvider.value(value: _groupCubit),
         ],
         child: MaterialApp.router(
-          title: 'Patungin',
+          title: 'BagiTigaKan',
           debugShowCheckedModeBanner: false,
           scaffoldMessengerKey: _scaffoldMessengerKey,
           theme: AppTheme.lightTheme,
