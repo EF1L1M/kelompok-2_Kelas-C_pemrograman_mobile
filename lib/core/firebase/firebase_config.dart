@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 // KONFIGURASI FIREBASE & LOCAL EMULATOR SUITE
 // Mendukung Web (Chrome) dan Android (Emulator / Perangkat Fisik).
 //
-// Secara default terhubung ke Firebase Local Emulator Suite (demo-patungin).
+// Secara default terhubung ke Firebase Local Emulator Suite (demo-bagitigakan).
 // Untuk berpindah ke Firebase Cloud produksi di tahap berikutnya:
 //   1. Jalankan `flutterfire configure` untuk menghasilkan firebase_options.dart
 //   2. Jalankan aplikasi dengan `--dart-define=USE_FIREBASE_EMULATOR=false`
@@ -26,7 +26,7 @@ class FirebaseAppConfig {
 
   static const String projectId = String.fromEnvironment(
     'FIREBASE_PROJECT_ID',
-    defaultValue: 'demo-patungin',
+    defaultValue: 'demo-bagitigakan',
   );
 
   static const String _customEmulatorHost = String.fromEnvironment(
@@ -53,14 +53,14 @@ class FirebaseAppConfig {
   static FirebaseOptions get emulatorOptions {
     final String appId = switch (defaultTargetPlatform) {
       TargetPlatform.android when !kIsWeb =>
-        '1:123456789000:android:patungin00000001',
+        '1:123456789000:android:bagitigakan00001',
       TargetPlatform.iOS when !kIsWeb =>
-        '1:123456789000:ios:patungin00000001',
-      _ => '1:123456789000:web:patungin00000001',
+        '1:123456789000:ios:bagitigakan00001',
+      _ => '1:123456789000:web:bagitigakan00001',
     };
 
     return FirebaseOptions(
-      apiKey: 'demo-patungin-local-key',
+      apiKey: 'demo-bagitigakan-local-key',
       appId: appId,
       messagingSenderId: '123456789000',
       projectId: projectId,
@@ -87,7 +87,7 @@ class FirebaseAppConfig {
         persistenceEnabled: false,
       );
       debugPrint(
-        'Patungin terhubung ke Firebase Local Emulator Suite '
+        'BagiTigaKan terhubung ke Firebase Local Emulator Suite '
         '(Auth: $host:$authEmulatorPort, Firestore: $host:$firestoreEmulatorPort, '
         'Project: $projectId).',
       );

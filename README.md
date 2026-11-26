@@ -7,9 +7,9 @@
 
 ---
 
-## Proyek Akhir: Patungin — Smart Split-Bill & Budget (Dart & Flutter SDK)
+## Proyek Akhir: BagiTigaKan (`÷ split_fairly(n)`) — Smart Split-Bill & Budget (Dart & Flutter SDK)
 
-Aplikasi **Patungin** untuk pengelolaan grup patungan, ekstraksi struk otomatis (OCR), konversi kurs mata uang asing ke Rupiah, pembagian proporsional pajak/layanan/diskon tanpa selisih pembulatan, serta pelacakan pelunasan tagihan secara *real-time* berbasis **Firebase Authentication** dan **Cloud Firestore**.
+Aplikasi **BagiTigaKan** untuk pengelolaan grup patungan, ekstraksi struk otomatis (OCR), konversi kurs mata uang asing ke Rupiah, pembagian proporsional pajak/layanan/diskon tanpa selisih pembulatan, serta pelacakan pelunasan tagihan secara *real-time* berbasis **Firebase Authentication** dan **Cloud Firestore**.
 
 ### Fitur Utama
 1. **Autentikasi Sungguhan & Otorisasi Berbasis Peran (RBAC)**
@@ -30,9 +30,9 @@ Aplikasi **Patungin** untuk pengelolaan grup patungan, ekstraksi struk otomatis 
 #### 1. Jalankan Firebase Emulator Suite
 Pastikan Node.js dan Java (JDK) sudah terpasang, lalu jalankan di terminal pertama:
 ```bash
-firebase emulators:start --project demo-patungin
+firebase emulators:start --project demo-bagitigakan
 ```
-*(Atau gunakan `npx firebase-tools emulators:start --project demo-patungin` jika tidak menginstal global.)*
+*(Atau gunakan `npx firebase-tools emulators:start --project demo-bagitigakan` jika tidak menginstal global, atau cukup tekan **F5** di VS Code agar emulator otomatis menyala dan ikut mati saat debugging selesai.)*
 
 Layanan yang aktif:
 - **Emulator UI (Dashboard):** `http://127.0.0.1:4000`

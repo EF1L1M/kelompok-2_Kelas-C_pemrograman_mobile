@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/exceptions/auth_exception.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../models/erd_models.dart';
 import '../../../repositories/bill_settlement_repository.dart';
 import '../../../repositories/group_repository.dart';
@@ -8,8 +9,8 @@ import '../../../repositories/group_repository.dart';
 // ============================================================================
 // GROUP CUBIT (REAL-TIME FIRESTORE STATE MANAGEMENT)
 // Mengelola daftar grup pengguna, saldo utang/piutang lintas grup,
-// daftar tagihan "Perlu Perhatian", pembuatan grup (invite_code unik BR-07),
-// serta gabung grup via kode undangan.
+// daftar tagihan "Perlu Perhatian", notifikasi penerima real-time,
+// pembuatan grup (invite_code unik BR-07), serta gabung grup via kode.
 // ============================================================================
 
 class GroupDashboardState {
@@ -71,6 +72,10 @@ class GroupCubit extends Cubit<GroupDashboardState> {
   StreamSubscription<List<BillModel>>? _billsSub;
   StreamSubscription<List<AppNotification>>? _notifSub;
   String? _activeUserUid;
+  String _subscribedGroupIdsKey = '';
+  List<GroupModel> _latestGroups = const [];
+  final Set<String> _knownNotifIds = <String>{};
+  bool _notifInitialLoaded = false;
 
   GroupCubit({
     required GroupRepository groupRepository,
@@ -89,10 +94,21 @@ class GroupCubit extends Cubit<GroupDashboardState> {
         );
 
   void bindUser(String? userUid) {
+    if (_activeUserUid == userUid && _groupsSub != null) {
+      return;
+    }
+
     _groupsSub?.cancel();
     _billsSub?.cancel();
     _notifSub?.cancel();
+    _groupsSub = null;
+    _billsSub = null;
+    _notifSub = null;
     _activeUserUid = userUid;
+    _subscribedGroupIdsKey = '';
+    _latestGroups = const [];
+    _knownNotifIds.clear();
+    _notifInitialLoaded = false;
 
     if (userUid == null) {
       emit(
@@ -109,19 +125,53 @@ class GroupCubit extends Cubit<GroupDashboardState> {
     }
 
     _groupsSub = _groupRepository.watchUserGroups(userUid).listen((groups) {
-      _recomputeAndEmit(userUid: userUid, groups: groups, bills: state.allBills);
-
-      _billsSub?.cancel();
-      _billsSub = _settlementRepository.watchBillsForGroups(groups).listen(
-        (bills) {
-          _recomputeAndEmit(userUid: userUid, groups: groups, bills: bills);
-        },
+      _latestGroups = groups;
+      _recomputeAndEmit(
+        userUid: userUid,
+        groups: groups,
+        bills: state.allBills,
       );
+
+      final sortedIds = groups.map((g) => g.groupId).toList()..sort();
+      final nextKey = sortedIds.join(',');
+      if (nextKey != _subscribedGroupIdsKey) {
+        _subscribedGroupIdsKey = nextKey;
+        _billsSub?.cancel();
+        _billsSub = _settlementRepository.watchBillsForGroups(groups).listen(
+          (bills) {
+            _recomputeAndEmit(
+              userUid: userUid,
+              groups: _latestGroups,
+              bills: bills,
+            );
+          },
+        );
+      }
     });
 
     _notifSub = _settlementRepository
         .watchUserNotifications(userUid)
         .listen((notifications) {
+      if (!_notifInitialLoaded) {
+        _notifInitialLoaded = true;
+        _knownNotifIds.addAll(notifications.map((n) => n.notifId));
+      } else {
+        // Hanya tampilkan push banner lokal di perangkat PENERIMA saat
+        // dokumen notifikasi baru masuk dari Firestore
+        for (final notif in notifications) {
+          if (!notif.isRead && _knownNotifIds.add(notif.notifId)) {
+            NotificationService.instance.showPushNotification(
+              notifId: notif.notifId,
+              title: 'BagiTigaKan · ${notif.type.label}',
+              body: notif.message,
+              groupId: notif.groupId,
+              billId: notif.billId,
+              type: notif.type.code,
+            );
+          }
+        }
+      }
+
       final unread = notifications.where((n) => !n.isRead).length;
       emit(state.copyWith(unreadNotifCount: unread));
     });

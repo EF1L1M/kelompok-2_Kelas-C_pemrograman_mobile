@@ -64,19 +64,24 @@ class AuthCubit extends Cubit<AuthState> with ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    emit(const AuthLoading('Masuk ke akun Patungin...'));
+    emit(const AuthLoading('Masuk ke akun BagiTigaKan...'));
     try {
       final user = await _authRepository.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      emit(
-        AuthAuthenticated(
-          user: user,
-          fcmToken: _authRepository.getActiveFcmToken(user.uid),
-        ),
-      );
-      notifyListeners();
+      final current = state;
+      if (current is! AuthAuthenticated ||
+          current.user.uid != user.uid ||
+          current.user.fullName != user.fullName) {
+        emit(
+          AuthAuthenticated(
+            user: user,
+            fcmToken: _authRepository.getActiveFcmToken(user.uid),
+          ),
+        );
+        notifyListeners();
+      }
     } on AppAuthException catch (e) {
       emit(AuthError(e.message));
       emit(const AuthUnauthenticated(showOnboardingFirst: false));
@@ -100,13 +105,18 @@ class AuthCubit extends Cubit<AuthState> with ChangeNotifier {
         email: email,
         password: password,
       );
-      emit(
-        AuthAuthenticated(
-          user: user,
-          fcmToken: _authRepository.getActiveFcmToken(user.uid),
-        ),
-      );
-      notifyListeners();
+      final current = state;
+      if (current is! AuthAuthenticated ||
+          current.user.uid != user.uid ||
+          current.user.fullName != user.fullName) {
+        emit(
+          AuthAuthenticated(
+            user: user,
+            fcmToken: _authRepository.getActiveFcmToken(user.uid),
+          ),
+        );
+        notifyListeners();
+      }
     } on AppAuthException catch (e) {
       emit(AuthError(e.message));
       emit(const AuthUnauthenticated(showOnboardingFirst: false));

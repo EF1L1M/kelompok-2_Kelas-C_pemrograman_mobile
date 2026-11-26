@@ -1,25 +1,31 @@
 {
-  "version": "0.2.0",
+  "version": "2.0.0",
   "configurations": [
     {
-      "name": "Smart Split-Bill (Chrome - Tanpa Visual Studio)",
+      "name": "BagiTigaKan (Chrome + Firebase Emulator)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "deviceId": "chrome"
+      "deviceId": "chrome",
+      "preLaunchTask": "Start Firebase Emulator",
+      "postDebugTask": "Stop Firebase Emulator"
     },
     {
-      "name": "Smart Split-Bill (Microsoft Edge - Tanpa Visual Studio)",
+      "name": "BagiTigaKan (Microsoft Edge + Firebase Emulator)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
-      "deviceId": "edge"
+      "deviceId": "edge",
+      "preLaunchTask": "Start Firebase Emulator",
+      "postDebugTask": "Stop Firebase Emulator"
     },
     {
-      "name": "Smart Split-Bill (Android Emulator / Device)",
+      "name": "BagiTigaKan (Android Emulator / Device + Firebase Emulator)",
       "request": "launch",
       "type": "dart",
-      "program": "lib/main.dart"
+      "program": "lib/main.dart",
+      "preLaunchTask": "Start Firebase Emulator",
+      "postDebugTask": "Stop Firebase Emulator"
     }
   ]
 }

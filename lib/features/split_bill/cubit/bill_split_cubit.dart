@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/network/api_response.dart';
@@ -18,6 +19,12 @@ class BillSplitCubit extends Cubit<BillState> {
   final OpenSourceApiRepository _apiRepository;
   final BillSettlementRepository _settlementRepository;
 
+  // Simpan status pembayaran & tanggal asli saat mengedit tagihan yang sudah ada
+  // agar peserta yang sudah LUNAS tidak ikut ter-reset jadi belum bayar.
+  Map<String, BillParticipantModel> _existingParticipantsByUid = const {};
+  DateTime? _existingCreatedAt;
+  int _itemIdCounter = 0;
+
   BillSplitCubit({
     required OpenSourceApiRepository apiRepository,
     required BillSettlementRepository settlementRepository,
@@ -34,11 +41,17 @@ class BillSplitCubit extends Cubit<BillState> {
 
     if (existingBill != null) {
       final b = existingBill.bill;
+      _existingCreatedAt = b.createdAt;
+      _existingParticipantsByUid = {
+        for (final p in existingBill.participants)
+          p.participant.debtorUid: p.participant,
+      };
       final rate = b.exchangeRate <= 0 ? 1.0 : b.exchangeRate;
       final draftItems = existingBill.items.map((item) {
-        final assigned = (existingBill.assignmentsByItem[item.itemId] ?? const [])
-            .map((a) => a.debtorUid)
-            .toSet();
+        final assigned =
+            (existingBill.assignmentsByItem[item.itemId] ?? const [])
+                .map((a) => a.debtorUid)
+                .toSet();
         return DraftBillItem(
           id: item.itemId,
           name: item.itemName,
@@ -64,33 +77,20 @@ class BillSplitCubit extends Cubit<BillState> {
       return;
     }
 
-    final initialItems = [
-      DraftBillItem(
-        id: 'item_${DateTime.now().millisecondsSinceEpoch}_1',
-        name: 'Ayam Bakar Madu Satu Ekor (Sharing)',
-        qty: 1,
-        unitPriceOrigin: 90000,
-        assignedMemberUids: Set<String>.from(defaultMemberUids),
-      ),
-      DraftBillItem(
-        id: 'item_${DateTime.now().millisecondsSinceEpoch}_2',
-        name: 'Es Kopi Susu Gula Aren',
-        qty: 2,
-        unitPriceOrigin: 22000,
-        assignedMemberUids: defaultMemberUids.take(2).toSet(),
-      ),
-    ];
+    _existingCreatedAt = null;
+    _existingParticipantsByUid = const {};
 
+    // Mulai dengan draft bersih tanpa item fiktif bawaan
     _recalculateAndEmit(
-      title: 'Makan Malam Bersama',
+      title: '',
       currencyCode: 'IDR',
       exchangeRate: 1.0,
       rateDate: DateTime.now(),
       rateSourceInfo: 'Mata Uang Lokal (IDR = 1.0)',
-      items: initialItems,
-      taxOrigin: 13400, // PB1 10%
-      serviceOrigin: 6700, // Layanan 5%
-      discountOrigin: 5000,
+      items: const [],
+      taxOrigin: 0,
+      serviceOrigin: 0,
+      discountOrigin: 0,
       groupMembers: members,
     );
   }
@@ -283,7 +283,7 @@ class BillSplitCubit extends Cubit<BillState> {
     final updatedItems = [
       ...current.items,
       DraftBillItem(
-        id: 'item_${DateTime.now().microsecondsSinceEpoch}',
+        id: 'item_${DateTime.now().microsecondsSinceEpoch}_${++_itemIdCounter}',
         name: name.trim(),
         qty: qty,
         unitPriceOrigin: unitPriceOrigin,
@@ -442,18 +442,32 @@ class BillSplitCubit extends Cubit<BillState> {
     required List<AppUser> groupMembers,
     String? ocrIsolateBadge,
   }) {
-    // 1. Konversi subtotal, pajak, layanan, diskon ke IDR & bulatkan ke Rupiah (BR-02 & BR-03)
+    // 1. Sanitasi nilai agar tidak negatif & konversi ke IDR (BR-02 & BR-03)
+    final double safeTaxOrigin = math.max(0.0, taxOrigin);
+    final double safeServiceOrigin = math.max(0.0, serviceOrigin);
+    final double safeDiscountOrigin = math.max(0.0, discountOrigin);
+
     final double subtotalIdr = items.fold<double>(
       0.0,
       (sum, item) => sum + item.totalIdr(exchangeRate),
     );
-    final double taxIdr = (taxOrigin * exchangeRate).roundToDouble();
-    final double serviceIdr = (serviceOrigin * exchangeRate).roundToDouble();
-    final double discountIdr = (discountOrigin * exchangeRate).roundToDouble();
-    final double grandTotalIdr =
-        (subtotalIdr + taxIdr + serviceIdr - discountIdr).roundToDouble();
+    final double assignedSubtotalIdr = items
+        .where((item) => item.assignedMemberUids.isNotEmpty)
+        .fold<double>(0.0, (sum, item) => sum + item.totalIdr(exchangeRate));
 
-    // 2. Hitung subtotal item per anggota menggunakan .map() dan .where() + .fold()
+    final double taxIdr = (safeTaxOrigin * exchangeRate).roundToDouble();
+    final double serviceIdr =
+        (safeServiceOrigin * exchangeRate).roundToDouble();
+    final double rawDiscountIdr =
+        (safeDiscountOrigin * exchangeRate).roundToDouble();
+    final double grossTotalIdr = subtotalIdr + taxIdr + serviceIdr;
+    // Batasi diskon agar grand total tidak pernah negatif
+    final double effectiveDiscountIdr =
+        math.min(rawDiscountIdr, grossTotalIdr).roundToDouble();
+    final double grandTotalIdr =
+        math.max(0.0, grossTotalIdr - effectiveDiscountIdr).roundToDouble();
+
+    // 2. Hitung subtotal item per anggota dari item yang memiliki penanggung
     final List<ComputedParticipantSplit> rawSplits = groupMembers.map((member) {
       final double memberSubtotal = items
           .where((item) => item.assignedMemberUids.contains(member.uid))
@@ -464,15 +478,18 @@ class BillSplitCubit extends Cubit<BillState> {
                 (item.totalIdr(exchangeRate) / item.assignedMemberUids.length),
           );
 
-      // BR-01: Proporsi pajak, biaya layanan, dan diskon berdasarkan subtotal_i / Σ subtotal
-      final double ratio =
-          subtotalIdr > 0 ? (memberSubtotal / subtotalIdr) : 0.0;
+      // BR-01: Proporsi pajak, layanan, dan diskon berdasarkan porsi subtotal item bertuan
+      final double ratio = assignedSubtotalIdr > 0
+          ? (memberSubtotal / assignedSubtotalIdr)
+          : 0.0;
       final double memberTax = taxIdr * ratio;
       final double memberService = serviceIdr * ratio;
-      final double memberDiscount = discountIdr * ratio;
+      final double memberDiscount = effectiveDiscountIdr * ratio;
 
-      final double exactTotal =
-          memberSubtotal + memberTax + memberService - memberDiscount;
+      final double exactTotal = math.max(
+        0.0,
+        memberSubtotal + memberTax + memberService - memberDiscount,
+      );
 
       return ComputedParticipantSplit(
         user: member,
@@ -484,18 +501,20 @@ class BillSplitCubit extends Cubit<BillState> {
       );
     }).toList();
 
-    // 3. BR-03: Pembulatan ke Rupiah; selisih pembulatan ditambahkan ke anggota
-    //    dengan subtotal terbesar agar total seluruh peserta == grandTotalIdr (Selisih Rp0!)
+    // 3. BR-03: Koreksi selisih pembulatan Rp0 HANYA ketika seluruh item sudah dipilih
+    //    anggotanya (mencegah harga item tak bertuan masuk ke peserta terbesar!).
+    final bool allAssigned = items.isNotEmpty &&
+        items.every((item) => item.assignedMemberUids.isNotEmpty);
     final double sumRounded = rawSplits.fold<double>(
       0.0,
       (sum, s) => sum + s.totalDueIdr,
     );
-    final double diffIdr =
-        subtotalIdr > 0 ? (grandTotalIdr - sumRounded).roundToDouble() : 0.0;
+    final double diffIdr = (allAssigned && grandTotalIdr > 0)
+        ? (grandTotalIdr - sumRounded).roundToDouble()
+        : 0.0;
 
     List<ComputedParticipantSplit> finalSplits = rawSplits;
     if (diffIdr != 0 && rawSplits.isNotEmpty) {
-      // Cari peserta dengan itemsSubtotalIdr terbesar menggunakan .reduce()
       final ComputedParticipantSplit largestParticipant = rawSplits.reduce(
         (curr, next) =>
             next.itemsSubtotalIdr > curr.itemsSubtotalIdr ? next : curr,
@@ -509,7 +528,7 @@ class BillSplitCubit extends Cubit<BillState> {
             taxShareIdr: split.taxShareIdr,
             serviceShareIdr: split.serviceShareIdr,
             discountShareIdr: split.discountShareIdr,
-            totalDueIdr: split.totalDueIdr + diffIdr,
+            totalDueIdr: math.max(0.0, split.totalDueIdr + diffIdr),
             roundingAdjustmentIdr: diffIdr,
           );
         }
@@ -525,19 +544,74 @@ class BillSplitCubit extends Cubit<BillState> {
         rateDate: rateDate,
         rateSourceInfo: rateSourceInfo,
         items: items,
-        taxOrigin: taxOrigin,
-        serviceOrigin: serviceOrigin,
-        discountOrigin: discountOrigin,
+        taxOrigin: safeTaxOrigin,
+        serviceOrigin: safeServiceOrigin,
+        discountOrigin: safeDiscountOrigin,
         groupMembers: groupMembers,
         computedSplits: finalSplits,
         subtotalIdr: subtotalIdr,
         taxIdr: taxIdr,
         serviceIdr: serviceIdr,
-        discountIdr: discountIdr,
+        discountIdr: effectiveDiscountIdr,
         grandTotalIdr: grandTotalIdr,
         ocrIsolateBadge: ocrIsolateBadge,
       ),
     );
+  }
+
+  /// Membangun daftar peserta untuk disimpan; mempertahankan status `paid`/`pending`
+  /// saat mode edit bila nominal peserta tidak bertambah.
+  List<BillParticipantModel> buildParticipantsForSubmit({
+    required BillLoaded current,
+    required String billId,
+    required String creatorUid,
+    required DateTime now,
+    required bool isEdit,
+  }) {
+    return current.computedSplits
+        .where((s) => s.totalDueIdr > 0)
+        .map((split) {
+          final isCreator = split.user.uid == creatorUid;
+          final existing =
+              isEdit ? _existingParticipantsByUid[split.user.uid] : null;
+
+          PaymentStatus status;
+          DateTime? claimedAt;
+          DateTime? verifiedAt;
+
+          if (isCreator) {
+            status = PaymentStatus.paid;
+            claimedAt = existing?.claimedAt ?? now;
+            verifiedAt = existing?.verifiedAt ?? now;
+          } else if (existing != null &&
+              (existing.paymentStatus == PaymentStatus.paid ||
+                  existing.paymentStatus == PaymentStatus.pending) &&
+              split.totalDueIdr <= existing.totalDueIdr + 0.5) {
+            // Nominal tidak bertambah -> pertahankan status Lunas / Menunggu Verifikasi!
+            status = existing.paymentStatus;
+            claimedAt = existing.claimedAt;
+            verifiedAt = existing.verifiedAt;
+          } else {
+            status = PaymentStatus.unpaid;
+            claimedAt = null;
+            verifiedAt = null;
+          }
+
+          return BillParticipantModel(
+            participantId: 'part_${billId}_${split.user.uid}',
+            billId: billId,
+            debtorUid: split.user.uid,
+            itemsSubtotalIdr: split.itemsSubtotalIdr,
+            taxShareIdr: split.taxShareIdr,
+            serviceShareIdr: split.serviceShareIdr,
+            discountShareIdr: split.discountShareIdr,
+            totalDueIdr: split.totalDueIdr,
+            paymentStatus: status,
+            claimedAt: claimedAt,
+            verifiedAt: verifiedAt,
+          );
+        })
+        .toList();
   }
 
   /// Simpan Tagihan ke Database (BILLS, BILL_ITEMS, ITEM_ASSIGNMENTS, BILL_PARTICIPANTS)
@@ -550,9 +624,41 @@ class BillSplitCubit extends Cubit<BillState> {
     final current = state is BillLoaded ? state as BillLoaded : null;
     if (current == null || !current.allItemsAssigned) return null;
 
+    if (current.grandTotalIdr <= 0) {
+      emit(
+        BillError(
+          errorMessage:
+              'Total tagihan harus lebih besar dari Rp 0. Periksa kembali nominal diskon atau item pesanan.',
+          previousLoadedState: current,
+        ),
+      );
+      emit(current);
+      return null;
+    }
+
+    final bool isEdit = existingBillId != null;
     final String billId =
         existingBillId ?? 'bill_${DateTime.now().millisecondsSinceEpoch}';
     final now = DateTime.now();
+
+    final participants = buildParticipantsForSubmit(
+      current: current,
+      billId: billId,
+      creatorUid: creatorUid,
+      now: now,
+      isEdit: isEdit,
+    );
+
+    if (participants.isEmpty) {
+      emit(
+        BillError(
+          errorMessage: 'Tidak ada peserta dengan nominal tagihan di atas Rp 0.',
+          previousLoadedState: current,
+        ),
+      );
+      emit(current);
+      return null;
+    }
 
     final billModel = BillModel(
       billId: billId,
@@ -569,9 +675,10 @@ class BillSplitCubit extends Cubit<BillState> {
       serviceAmountIdr: current.serviceIdr,
       discountAmountIdr: current.discountIdr,
       grandTotalIdr: current.grandTotalIdr,
-      receiptUrl: current.ocrIsolateBadge != null ? 'ocr_scanned_receipt.jpg' : '',
+      receiptUrl:
+          current.ocrIsolateBadge != null ? 'ocr_scanned_receipt.jpg' : '',
       status: BillStatus.open,
-      createdAt: now,
+      createdAt: isEdit ? (_existingCreatedAt ?? now) : now,
     );
 
     final List<BillItemModel> itemModels = current.items
@@ -602,35 +709,12 @@ class BillSplitCubit extends Cubit<BillState> {
         }).toList(),
     };
 
-    // Hanya sertakan anggota yang memiliki tagihan > 0 sebagai BILL_PARTICIPANTS
-    // BR-05: Bagian milik Bill Creator otomatis berstatus `paid` karena ia yang menalangi!
-    final List<BillParticipantModel> participants = current.computedSplits
-        .where((s) => s.totalDueIdr > 0)
-        .map((split) {
-          final isCreator = split.user.uid == creatorUid;
-          return BillParticipantModel(
-            participantId: 'part_${billId}_${split.user.uid}',
-            billId: billId,
-            debtorUid: split.user.uid,
-            itemsSubtotalIdr: split.itemsSubtotalIdr,
-            taxShareIdr: split.taxShareIdr,
-            serviceShareIdr: split.serviceShareIdr,
-            discountShareIdr: split.discountShareIdr,
-            totalDueIdr: split.totalDueIdr,
-            paymentStatus:
-                isCreator ? PaymentStatus.paid : PaymentStatus.unpaid,
-            claimedAt: isCreator ? now : null,
-            verifiedAt: isCreator ? now : null,
-          );
-        })
-        .toList();
-
     return _settlementRepository.saveNewOrUpdatedBill(
       bill: billModel,
       items: itemModels,
       assignmentsByItem: assignmentsByItem,
       participants: participants,
-      isEdit: existingBillId != null,
+      isEdit: isEdit,
     );
   }
 }

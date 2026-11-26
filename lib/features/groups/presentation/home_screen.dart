@@ -6,6 +6,7 @@ import '../../../core/extensions/format_extensions.dart';
 import '../../../core/firebase/firebase_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/form_validator_mixin.dart';
+import '../../../core/widgets/patungin_patterns.dart';
 import '../../../models/erd_models.dart';
 import '../../../repositories/bill_settlement_repository.dart';
 import '../../auth/cubit/auth_cubit.dart';
@@ -43,14 +44,12 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
               backgroundColor: state.isErrorFeedback
                   ? AppTheme.statusRejected
                   : AppTheme.primaryEmerald,
-              behavior: SnackBarBehavior.floating,
             ),
           );
         }
       },
       builder: (context, groupState) {
         final actionableBills = groupState.actionableBills;
-
         final filteredGroups = groupState.groups.where((g) {
           if (_searchQuery.trim().isEmpty) return true;
           final q = _searchQuery.trim().toLowerCase();
@@ -60,213 +59,208 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
         }).toList();
 
         return Scaffold(
-          appBar: AppBar(
-            title: const Row(
-              children: [
-                Icon(
-                  Icons.receipt_long_rounded,
-                  color: AppTheme.primaryEmerald,
+          backgroundColor: AppTheme.warmCream,
+          body: CustomScrollView(
+            slivers: [
+              // 1. Header Gelombang Organik + Saldo Editorial Terbuka (bukan kotak gelap kaku)
+              SliverToBoxAdapter(
+                child: _buildCurvedHeroSection(
+                  context,
+                  currentUser,
+                  groupState,
                 ),
-                SizedBox(width: 10),
-                Text('Patungin'),
-              ],
-            ),
-            actions: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  IconButton(
-                    tooltip: 'Notifikasi',
-                    onPressed: () => context.push('/notifications'),
-                    icon: const Icon(Icons.notifications_outlined),
+              ),
+
+              // 2. Tombol Aksi Pil Cepat (Buat Grup & Gabung via Kode)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showCreateGroupDialog(context),
+                          icon: const Icon(Icons.add_circle_outline_rounded, size: 19),
+                          label: const Text('Buat Grup'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: AppTheme.paperWhite,
+                          ),
+                          onPressed: () => _showJoinGroupDialog(context),
+                          icon: const Icon(Icons.confirmation_num_outlined, size: 19),
+                          label: const Text('Gabung Kode'),
+                        ),
+                      ),
+                    ],
                   ),
-                  if (groupState.unreadNotifCount > 0)
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
+                ),
+              ),
+
+              // 3. Tagihan Aktif dalam Pola Strip Tiket Horizontal (memecah ritme vertikal!)
+              if (actionableBills.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Perlu Perhatian',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.4,
+                                color: AppTheme.darkSlate,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 11,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppTheme.butterWash,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                '${actionableBills.length} tagihan',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF9A6108),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.statusUnpaid,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '${groupState.unreadNotifCount}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
+                      ),
+                      SizedBox(
+                        height: 146,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          scrollDirection: Axis.horizontal,
+                          itemCount: actionableBills.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 12),
+                          itemBuilder: (context, idx) =>
+                              _buildActionableTicket(
+                            context,
+                            actionableBills[idx],
                           ),
                         ),
                       ),
-                    ),
-                ],
-              ),
-              IconButton(
-                tooltip: 'Profil Akun',
-                onPressed: () => _showProfileSheet(context, currentUser),
-                icon: const Icon(Icons.account_circle_outlined),
-              ),
-              IconButton(
-                tooltip: 'Keluar',
-                onPressed: () async {
-                  await context.read<AuthCubit>().signOut();
-                  if (context.mounted) context.go('/login');
-                },
-                icon: const Icon(Icons.logout_rounded),
-              ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-            children: [
-              // 1. Kartu Profil & Saldo Bersih (Net Balance)
-              _buildProfileAndNetBalanceCard(
-                context,
-                currentUser,
-                groupState.overallBalance,
-              ),
-              const SizedBox(height: 14),
-
-              // 2. Kartu Ringkasan Total Utang & Piutang
-              _buildBalanceSummaryRow(groupState),
-              const SizedBox(height: 16),
-
-              // 3. Tombol Aksi Utama: Buat Grup & Gabung via Kode Undangan
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showCreateGroupDialog(context),
-                      icon: const Icon(Icons.group_add_rounded),
-                      label: const Text('Buat Grup Baru'),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showJoinGroupDialog(context),
-                      icon: const Icon(Icons.vpn_key_rounded),
-                      label: const Text('Gabung via Kode'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                ),
+
+              // 4. Header & Pencarian Pil untuk Daftar Grup Patungan
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 26, 20, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Lingkaran Patungan (${groupState.groups.length})',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.4,
+                              color: AppTheme.darkSlate,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (groupState.groups.length > 1) ...[
+                        const SizedBox(height: 12),
+                        TextField(
+                          onChanged: (val) =>
+                              setState(() => _searchQuery = val),
+                          decoration: InputDecoration(
+                            hintText: 'Cari nama grup atau kode...',
+                            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide:
+                                  const BorderSide(color: AppTheme.softBorder),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide:
+                                  const BorderSide(color: AppTheme.softBorder),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: const BorderSide(
+                                color: AppTheme.primaryEmerald,
+                                width: 1.8,
+                              ),
+                            ),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(
+                                      Icons.clear_rounded,
+                                      size: 18,
+                                    ),
+                                    onPressed: () =>
+                                        setState(() => _searchQuery = ''),
+                                  )
+                                : null,
+                          ),
                         ),
-                      ),
-                    ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ),
 
-              // 4. Tagihan Aktif yang Perlu Diselesaikan
-              if (actionableBills.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Tagihan Perlu Diselesaikan',
-                      style: TextStyle(
-                        fontSize: 16.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.darkSlate,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '${actionableBills.length} Aktif',
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFFB45309),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ...actionableBills.map(
-                  (item) => _buildActionableBillCard(context, item),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-
-              // 5. Header & Pencarian Daftar Grup Patungan
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Grup Patungan Saya (${groupState.groups.length})',
-                    style: const TextStyle(
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.darkSlate,
-                    ),
-                  ),
-                ],
-              ),
-              if (groupState.groups.length > 1) ...[
-                const SizedBox(height: 10),
-                TextField(
-                  onChanged: (val) => setState(() => _searchQuery = val),
-                  decoration: InputDecoration(
-                    hintText: 'Cari nama grup atau kode undangan...',
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded, size: 18),
-                            onPressed: () =>
-                                setState(() => _searchQuery = ''),
-                          )
-                        : null,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 10),
-
+              // 5. Daftar Grup dalam Pola Permukaan Organik Berwarna Pastel Hangat
               if (filteredGroups.isEmpty)
-                Card(
+                SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.fromLTRB(28, 28, 28, 48),
                     child: Column(
                       children: [
-                        const Icon(
-                          Icons.groups_2_outlined,
-                          size: 46,
-                          color: Color(0xFF94A3B8),
+                        const OrganicPebbleBadge(
+                          size: 84,
+                          color: AppTheme.warmSand,
+                          variant: 0,
+                          child: Icon(
+                            Icons.groups_2_outlined,
+                            size: 40,
+                            color: AppTheme.mutedInk,
+                          ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
                         Text(
                           groupState.groups.isEmpty
-                              ? 'Belum Ada Grup Patungan'
+                              ? 'Belum Ada Lingkaran Patungan'
                               : 'Grup Tidak Ditemukan',
                           style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16.5,
+                            color: AppTheme.darkSlate,
                           ),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           groupState.groups.isEmpty
-                              ? 'Buat grup patungan baru atau gunakan tombol "Gabung via Kode" untuk masuk ke grup teman Anda.'
-                              : 'Tidak ada grup yang cocok dengan kata kunci "$_searchQuery".',
+                              ? 'Bikin grup baru buat nongkrong, kos, atau liburan — atau gabung pakai kode undangan dari temanmu.'
+                              : 'Tidak ada grup yang cocok dengan "$_searchQuery".',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            fontSize: 13,
-                            color: Color(0xFF64748B),
+                            fontSize: 13.5,
+                            color: AppTheme.mutedInk,
+                            height: 1.5,
                           ),
                         ),
                       ],
@@ -274,137 +268,22 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                   ),
                 )
               else
-                ...filteredGroups.map((group) {
-                  final isAdmin = group.adminUid == currentUser.uid;
-                  final memberCount = group.memberUids.isNotEmpty
-                      ? group.memberUids.length
-                      : 1;
-                  final groupBalance =
-                      groupState.balanceForGroup(group.groupId);
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Card(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => context.push('/groups/${group.groupId}'),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryEmerald
-                                          .withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: const Icon(
-                                      Icons.groups_2_rounded,
-                                      color: AppTheme.primaryEmerald,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          group.groupName,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          group.description.isEmpty
-                                              ? 'Grup patungan aktif'
-                                              : group.description,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 12.5,
-                                            color: Color(0xFF64748B),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(
-                                    Icons.chevron_right_rounded,
-                                    color: Color(0xFF94A3B8),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 6,
-                                children: [
-                                  _BadgePill(
-                                    icon: isAdmin
-                                        ? Icons.admin_panel_settings_rounded
-                                        : Icons.person_outline_rounded,
-                                    text: isAdmin ? 'Admin Grup' : 'Anggota',
-                                    color: isAdmin
-                                        ? AppTheme.primaryEmerald
-                                        : const Color(0xFF475569),
-                                  ),
-                                  _BadgePill(
-                                    icon: Icons.people_alt_outlined,
-                                    text: '$memberCount Anggota',
-                                    color: const Color(0xFF6366F1),
-                                  ),
-                                  InkWell(
-                                    onTap: () {
-                                      Clipboard.setData(
-                                        ClipboardData(text: group.inviteCode),
-                                      );
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Kode undangan ${group.inviteCode} disalin ke papan klip',
-                                          ),
-                                          behavior: SnackBarBehavior.floating,
-                                        ),
-                                      );
-                                    },
-                                    child: _BadgePill(
-                                      icon: Icons.copy_rounded,
-                                      text: 'Kode: ${group.inviteCode}',
-                                      color: const Color(0xFF0284C7),
-                                    ),
-                                  ),
-                                  if (groupBalance.totalYouOweIdr > 0)
-                                    _BadgePill(
-                                      icon: Icons.arrow_upward_rounded,
-                                      text:
-                                          'Utang: ${groupBalance.totalYouOweIdr.toRupiah()}',
-                                      color: AppTheme.statusUnpaid,
-                                    )
-                                  else if (groupBalance.totalOwedToYouIdr > 0)
-                                    _BadgePill(
-                                      icon: Icons.arrow_downward_rounded,
-                                      text:
-                                          'Piutang: ${groupBalance.totalOwedToYouIdr.toRupiah()}',
-                                      color: AppTheme.primaryEmerald,
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 44),
+                  sliver: SliverList.builder(
+                    itemCount: filteredGroups.length,
+                    itemBuilder: (context, index) {
+                      final group = filteredGroups[index];
+                      return _buildOrganicGroupBand(
+                        context,
+                        group: group,
+                        currentUser: currentUser,
+                        groupBalance: groupState.balanceForGroup(group.groupId),
+                        index: index,
+                      );
+                    },
+                  ),
+                ),
             ],
           ),
         );
@@ -412,100 +291,175 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
     );
   }
 
-  Widget _buildProfileAndNetBalanceCard(
+  Widget _buildCurvedHeroSection(
     BuildContext context,
     AppUser activeUser,
-    UserBalanceSummary balance,
+    GroupDashboardState groupState,
   ) {
+    final balance = groupState.overallBalance;
     final net = balance.netBalanceIdr;
     final isPositive = net > 0;
     final isNegative = net < 0;
+    final firstName = activeUser.fullName.trim().split(RegExp(r'\s+')).first;
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
+    return OrganicWaveHeader(
+      waveDepth: 30,
+      padding: EdgeInsets.fromLTRB(
+        20,
+        MediaQuery.of(context).padding.top + 14,
+        20,
+        48,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Identitas merek BagiTigaKan + tagline kecil di puncak beranda
           Row(
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: AppTheme.primaryEmerald,
-                child: Text(
-                  activeUser.initials,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
+              const BagiTigaKanLogo(size: 30, showSubtleBorder: true),
+              const SizedBox(width: 9),
+              const BagiTigaKanWordmark(fontSize: 16.5, onDark: true),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.warmCream.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  '÷ split_fairly(n)',
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.warmCream,
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      activeUser.fullName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      activeUser.email,
-                      style: const TextStyle(
-                        color: Color(0xFF94A3B8),
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.25)),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                ),
-                onPressed: () => _showProfileSheet(context, activeUser),
-                icon: const Icon(Icons.person_outline_rounded, size: 16),
-                label: const Text(
-                  'Profil',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
+          // Baris sapaan manusiawi + tombol notifikasi & profil bulat
+          Row(
+            children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: () => _showProfileSheet(context, activeUser),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 21,
+                      backgroundColor: AppTheme.butterWash,
+                      child: Text(
+                        activeUser.initials,
+                        style: const TextStyle(
+                          color: AppTheme.deepForest,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${timeBasedGreeting()},',
+                          style: TextStyle(
+                            color: AppTheme.warmCream.withValues(alpha: 0.78),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          firstName,
+                          style: const TextStyle(
+                            color: AppTheme.warmCream,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    tooltip: 'Kabar Patungan',
+                    style: IconButton.styleFrom(
+                      backgroundColor:
+                          AppTheme.warmCream.withValues(alpha: 0.14),
+                      foregroundColor: AppTheme.warmCream,
+                    ),
+                    onPressed: () => context.push('/notifications'),
+                    icon: const Icon(Icons.notifications_none_rounded),
+                  ),
+                  if (groupState.unreadNotifCount > 0)
+                    Positioned(
+                      right: 2,
+                      top: 2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5.5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.terracotta,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppTheme.deepForest,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Text(
+                          '${groupState.unreadNotifCount}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Profil & Akun',
+                style: IconButton.styleFrom(
+                  backgroundColor: AppTheme.warmCream.withValues(alpha: 0.14),
+                  foregroundColor: AppTheme.warmCream,
+                ),
+                onPressed: () => _showProfileSheet(context, activeUser),
+                icon: const Icon(Icons.tune_rounded, size: 20),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // Tipografi Saldo Bersih Terbuka (tanpa kotak dalam kotak!)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Estimasi Saldo Bersih Anda',
+                    Text(
+                      'Posisi Saldo Patunganmu',
                       style: TextStyle(
-                        color: Color(0xFFCBD5E1),
-                        fontSize: 12,
+                        color: AppTheme.warmCream.withValues(alpha: 0.78),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -513,27 +467,31 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                       '${isPositive ? "+" : ""}${net.toRupiah()}',
                       style: TextStyle(
                         color: isPositive
-                            ? const Color(0xFF34D399)
+                            ? const Color(0xFF9AF0C7)
                             : isNegative
-                                ? const Color(0xFFFCA5A5)
-                                : Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
+                                ? const Color(0xFFFFC1AE)
+                                : AppTheme.warmCream,
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -1.0,
                       ),
                     ),
                   ],
                 ),
-                Container(
+              ),
+              Transform.rotate(
+                angle: -0.04,
+                child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
+                    horizontal: 12,
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
                     color: isPositive
-                        ? const Color(0xFF065F46)
+                        ? const Color(0xFF2B8A68)
                         : isNegative
-                            ? const Color(0xFF7F1D1D)
-                            : const Color(0xFF334155),
+                            ? AppTheme.terracotta
+                            : AppTheme.warmCream.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -541,213 +499,420 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                         ? 'Surplus Piutang'
                         : isNegative
                             ? 'Perlu Dilunasi'
-                            : 'Impun / Lunas',
+                            : 'Impun & Lega',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+          DashedDivider(color: AppTheme.warmCream.withValues(alpha: 0.22)),
+          const SizedBox(height: 14),
+
+          // Ledger Utang & Piutang sebaris (menggantikan 2 kotak merah-hijau generik)
+          Row(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: AppTheme.terracotta.withValues(alpha: 0.28),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.north_east_rounded,
+                        size: 16,
+                        color: Color(0xFFFFC1AE),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Utang Kamu',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: AppTheme.warmCream.withValues(alpha: 0.72),
+                            ),
+                          ),
+                          Text(
+                            balance.totalYouOweIdr.toRupiah(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.warmCream,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 1,
+                height: 32,
+                color: AppTheme.warmCream.withValues(alpha: 0.2),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF9AF0C7).withValues(alpha: 0.22),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.south_west_rounded,
+                        size: 16,
+                        color: Color(0xFF9AF0C7),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Piutang Teman',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: AppTheme.warmCream.withValues(alpha: 0.72),
+                            ),
+                          ),
+                          Text(
+                            balance.totalOwedToYouIdr.toRupiah(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 15.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.warmCream,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBalanceSummaryRow(GroupDashboardState groupState) {
-    final balance = groupState.overallBalance;
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFECACA)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.arrow_upward_rounded,
-                      size: 16,
-                      color: AppTheme.statusUnpaid,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'Total Utang Saya',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF991B1B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  balance.totalYouOweIdr.toRupiah(),
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF7F1D1D),
-                  ),
-                ),
-                const Text(
-                  'Belum dibayarkan ke teman',
-                  style: TextStyle(fontSize: 11, color: Color(0xFFB91C1C)),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFECFDF5),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFA7F3D0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.arrow_downward_rounded,
-                      size: 16,
-                      color: AppTheme.primaryEmerald,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'Total Piutang',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF065F46),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  balance.totalOwedToYouIdr.toRupiah(),
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF064E3B),
-                  ),
-                ),
-                const Text(
-                  'Menunggu pelunasan teman',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF047857)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionableBillCard(
+  /// Strip tiket berlekuk samping (horizontal carousel) untuk tagihan aktif
+  Widget _buildActionableTicket(
     BuildContext context,
     ActionableBillItem item,
   ) {
     final bill = item.bill;
     final bool hasPendingToVerify =
         item.isCreator && item.pendingVerificationCount > 0;
+    final Color accent = item.isCreator
+        ? (hasPendingToVerify ? AppTheme.honeyAmber : AppTheme.primaryEmerald)
+        : AppTheme.terracotta;
+    final Color topTint = item.isCreator
+        ? (hasPendingToVerify ? AppTheme.butterWash : AppTheme.sageWash)
+        : AppTheme.apricotWash;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Card(
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () =>
-              context.push('/groups/${bill.groupId}/bills/${bill.billId}'),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
+    return GestureDetector(
+      onTap: () => context.push('/groups/${bill.groupId}/bills/${bill.billId}'),
+      child: Container(
+        width: 248,
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF4A3D2C).withValues(alpha: 0.07),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipPath(
+          clipper: const TicketStripClipper(radius: 22, notchRadius: 8),
+          child: Container(
+            color: AppTheme.paperWhite,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Bagian atas tiket berwarna pastel hangat
                 Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: item.isCreator
-                        ? const Color(0xFFEDE9FE)
-                        : const Color(0xFFFEF2F2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    item.isCreator
-                        ? Icons.fact_check_outlined
-                        : Icons.payments_outlined,
-                    color: item.isCreator
-                        ? const Color(0xFF6D28D9)
-                        : AppTheme.statusUnpaid,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 13, 16, 12),
+                  color: topTint,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Row(
+                        children: [
+                          Icon(
+                            item.isCreator
+                                ? Icons.fact_check_outlined
+                                : Icons.payments_outlined,
+                            size: 15,
+                            color: accent,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              item.groupName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: accent,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
                       Text(
                         bill.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.isCreator
-                            ? hasPendingToVerify
-                                ? '${item.groupName} · ${item.pendingVerificationCount} konfirmasi bayar menunggu verifikasi Anda'
-                                : '${item.groupName} · Menunggu pembayaran anggota'
-                            : '${item.groupName} · Status: ${item.myStatus.label}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: hasPendingToVerify
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: hasPendingToVerify
-                              ? const Color(0xFFB45309)
-                              : const Color(0xFF64748B),
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          color: AppTheme.darkSlate,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14),
+                  child: DashedDivider(),
+                ),
+                // Bagian bawah tiket: nominal + status ringkas
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.isCreator
+                                ? (hasPendingToVerify
+                                    ? '${item.pendingVerificationCount} klaim masuk'
+                                    : 'Menunggu teman')
+                                : item.myStatus.shortLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: hasPendingToVerify
+                                  ? AppTheme.honeyAmber
+                                  : AppTheme.mutedInk,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          item.amountIdr.toRupiah(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15.5,
+                            color: accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Item Grup bergaya organik asimetris dengan warna identitas unik per grup
+  Widget _buildOrganicGroupBand(
+    BuildContext context, {
+    required GroupModel group,
+    required AppUser currentUser,
+    required UserBalanceSummary groupBalance,
+    required int index,
+  }) {
+    final isAdmin = group.adminUid == currentUser.uid;
+    final memberCount =
+        group.memberUids.isNotEmpty ? group.memberUids.length : 1;
+    final pal = PatunginPalette.forKey(group.groupId);
+
+    // Sudut asimetris bergantian agar ritme visual terasa hidup & organik
+    final BorderRadius organicRadius = index.isEven
+        ? const BorderRadius.only(
+            topLeft: Radius.circular(28),
+            topRight: Radius.circular(14),
+            bottomLeft: Radius.circular(16),
+            bottomRight: Radius.circular(28),
+          )
+        : const BorderRadius.only(
+            topLeft: Radius.circular(14),
+            topRight: Radius.circular(28),
+            bottomLeft: Radius.circular(28),
+            bottomRight: Radius.circular(16),
+          );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: AppTheme.paperWhite,
+        borderRadius: organicRadius,
+        child: InkWell(
+          borderRadius: organicRadius,
+          onTap: () => context.push('/groups/${group.groupId}'),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: organicRadius,
+              border: Border.all(color: AppTheme.softBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text(
-                      item.amountIdr.toRupiah(),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                        color: item.isCreator
-                            ? AppTheme.primaryEmerald
-                            : AppTheme.statusUnpaid,
+                    OrganicPebbleBadge(
+                      size: 48,
+                      color: pal.bg,
+                      variant: index,
+                      child: Icon(
+                        Icons.groups_2_rounded,
+                        color: pal.fg,
+                        size: 24,
                       ),
                     ),
-                    Text(
-                      item.isCreator ? 'Piutang' : 'Bagian Anda',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  group.groupName,
+                                  style: const TextStyle(
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.3,
+                                    color: AppTheme.darkSlate,
+                                  ),
+                                ),
+                              ),
+                              if (isAdmin)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: pal.bg,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    'Admin',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: pal.fg,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            group.description.isEmpty
+                                ? '$memberCount anggota patungan aktif'
+                                : '${group.description} · $memberCount anggota',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: AppTheme.mutedInk,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 15,
+                      color: pal.fg.withValues(alpha: 0.7),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const DashedDivider(),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    DashedCouponChip(
+                      label: group.inviteCode,
+                      color: pal.fg,
+                      onTap: () {
+                        Clipboard.setData(
+                          ClipboardData(text: group.inviteCode),
+                        );
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Kode undangan ${group.inviteCode} disalin!',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const Spacer(),
+                    if (groupBalance.totalYouOweIdr > 0)
+                      _InlineMoneyPill(
+                        label: 'Utang ${groupBalance.totalYouOweIdr.toRupiah()}',
+                        bg: AppTheme.apricotWash,
+                        fg: AppTheme.terracotta,
+                      )
+                    else if (groupBalance.totalOwedToYouIdr > 0)
+                      _InlineMoneyPill(
+                        label:
+                            'Piutang ${groupBalance.totalOwedToYouIdr.toRupiah()}',
+                        bg: AppTheme.sageWash,
+                        fg: AppTheme.primaryEmerald,
+                      )
+                    else
+                      const Text(
+                        'Semua beres ✓',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.mutedInk,
+                        ),
+                      ),
                   ],
                 ),
               ],
@@ -762,28 +927,39 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
     BuildContext context,
     AppUser activeUser,
   ) {
+    final pal = PatunginPalette.forKey(activeUser.uid);
+
     showModalBottomSheet<void>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.fromLTRB(24, 14, 24, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: AppTheme.softBorder,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
             Row(
               children: [
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: AppTheme.primaryEmerald,
+                OrganicPebbleBadge(
+                  size: 56,
+                  color: pal.bg,
+                  variant: 0,
                   child: Text(
                     activeUser.initials,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
+                    style: TextStyle(
+                      color: pal.fg,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
                     ),
                   ),
                 ),
@@ -795,8 +971,8 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                       Text(
                         activeUser.fullName,
                         style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -804,7 +980,7 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                         activeUser.email,
                         style: const TextStyle(
                           fontSize: 13,
-                          color: Color(0xFF64748B),
+                          color: AppTheme.mutedInk,
                         ),
                       ),
                     ],
@@ -812,45 +988,33 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'UID: ${activeUser.uid}',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      color: Color(0xFF475569),
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    FirebaseAppConfig.useEmulator
-                        ? 'Backend: Firebase Local Emulator (${FirebaseAppConfig.emulatorHost})'
-                        : 'Backend: Firebase Cloud (${FirebaseAppConfig.projectId})',
-                    style: const TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryEmerald,
-                    ),
-                  ),
-                ],
+            const SizedBox(height: 18),
+            const DashedDivider(),
+            const SizedBox(height: 14),
+            Text(
+              'ID Akun: ${activeUser.uid}',
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: AppTheme.mutedInk,
+                fontFamily: 'monospace',
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 6),
+            Text(
+              FirebaseAppConfig.useEmulator
+                  ? 'Terhubung ke Firebase Local Emulator (${FirebaseAppConfig.emulatorHost})'
+                  : 'Terhubung ke Firebase Cloud (${FirebaseAppConfig.projectId})',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.primaryEmerald,
+              ),
+            ),
+            const SizedBox(height: 20),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.statusRejected,
                 side: const BorderSide(color: AppTheme.statusRejected),
-                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
               onPressed: () async {
                 Navigator.pop(ctx);
@@ -874,7 +1038,7 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Buat Grup Patungan Baru'),
+        title: const Text('Buat Grup Patungan'),
         content: Form(
           key: formKey,
           child: Column(
@@ -892,13 +1056,13 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
               TextFormField(
                 controller: descCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Deskripsi Singkat (Opsional)',
+                  labelText: 'Catatan Singkat (Opsional)',
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               const Text(
-                'Kode undangan unik 6 karakter akan dibuat secara otomatis agar teman Anda dapat bergabung.',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                'Kode undangan 6 karakter akan langsung disiapkan agar temanmu bisa bergabung.',
+                style: TextStyle(fontSize: 12, color: AppTheme.mutedInk),
               ),
             ],
           ),
@@ -935,7 +1099,7 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Gabung Grup via Kode Undangan'),
+        title: const Text('Gabung via Kode Undangan'),
         content: Form(
           key: formKey,
           child: Column(
@@ -947,34 +1111,15 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                 textCapitalization: TextCapitalization.characters,
                 validator: validateInviteCode,
                 decoration: const InputDecoration(
-                  labelText: 'Masukkan Kode Undangan (6 Karakter)',
-                  hintText: 'Contoh: KOS26A',
+                  labelText: 'Kode Undangan (6 Karakter)',
+                  hintText: 'Contoh: BALI26',
+                  prefixIcon: Icon(Icons.confirmation_num_outlined),
                 ),
               ),
               const SizedBox(height: 10),
               const Text(
-                'Ketuk untuk mengisi cepat kode grup yang tersedia:',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-              ),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                children: [
-                  ActionChip(
-                    label: const Text(
-                      'KOS26A (Kos Melati)',
-                      style: TextStyle(fontSize: 11.5),
-                    ),
-                    onPressed: () => codeCtrl.text = 'KOS26A',
-                  ),
-                  ActionChip(
-                    label: const Text(
-                      'TIM26B (Tim Mobile)',
-                      style: TextStyle(fontSize: 11.5),
-                    ),
-                    onPressed: () => codeCtrl.text = 'TIM26B',
-                  ),
-                ],
+                'Minta kode undangan 6 karakter dari teman atau admin grup BagiTigaKan kamu.',
+                style: TextStyle(fontSize: 12, color: AppTheme.mutedInk),
               ),
             ],
           ),
@@ -996,7 +1141,7 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
                 }
               }
             },
-            child: const Text('Gabung Grup'),
+            child: const Text('Gabung'),
           ),
         ],
       ),
@@ -1004,39 +1149,32 @@ class _HomeScreenState extends State<HomeScreen> with FormValidatorMixin {
   }
 }
 
-class _BadgePill extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color color;
+class _InlineMoneyPill extends StatelessWidget {
+  final String label;
+  final Color bg;
+  final Color fg;
 
-  const _BadgePill({
-    required this.icon,
-    required this.text,
-    required this.color,
+  const _InlineMoneyPill({
+    required this.label,
+    required this.bg,
+    required this.fg,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: bg,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: color),
-          const SizedBox(width: 5),
-          Text(
-            text,
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: fg,
+        ),
       ),
     );
   }

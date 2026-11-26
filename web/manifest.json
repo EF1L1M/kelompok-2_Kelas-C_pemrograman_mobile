@@ -1,11 +1,11 @@
 {
-    "name": "Patungin",
-    "short_name": "Patungin",
+    "name": "BagiTigaKan",
+    "short_name": "BagiTigaKan",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "Patungin — Aplikasi Smart Split-Bill & Patungan Grup Real-Time.",
+    "background_color": "#FAF6F0",
+    "theme_color": "#143C2E",
+    "description": "BagiTigaKan (÷ split_fairly(n)) — Aplikasi Smart Split-Bill & Patungan Grup Real-Time.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
